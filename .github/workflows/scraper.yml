@@ -25,24 +25,23 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Open Food Facts scraper
-        # --- PATH FIX HERE ---
-        run: |
-          # The GITHUB_WORKSPACE environment variable points to the root of the checked-out repository.
-          # We need to run the script relative to that.
-          python ${{ github.workspace }}/openfoodfacts_scraper.py
+        # --- FINAL PATH FIX: Use working-directory ---
+        run: python openfoodfacts_scraper.py
+        working-directory: ${{ github.workspace }} # Ensure command runs from repo root
 
       - name: Commit and push updated CSV
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # Add the generated CSV file, using the correct path
-          git add ${{ github.workspace }}/openfoodfacts_cereals.csv
+          # Add the generated CSV file
+          git add openfoodfacts_cereals.csv
           
           # Commit only if there are changes
           git diff --quiet --exit-code || git commit -m 'Automated data update from Open Food Facts [skip ci]'
           
           # Push changes
           git push
+        working-directory: ${{ github.workspace }} # Ensure git commands run from repo root
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
