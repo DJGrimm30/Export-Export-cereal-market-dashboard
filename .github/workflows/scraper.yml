@@ -45,4 +45,4 @@ jobs:
           git push
         working-directory: ${{ github.workspace }} # Ensure git commands run from repo root
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
