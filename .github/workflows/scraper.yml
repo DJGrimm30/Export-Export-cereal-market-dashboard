@@ -2,26 +2,22 @@ name: Daily Open Food Facts Scraper
 
 on:
   schedule:
-    # Runs daily at 2:00 AM UTC
-    # You can adjust this cron schedule as needed.
-    # Example: '0 0 * * *' for daily at midnight UTC
-    # Example: '0 2 * * *' for daily at 2 AM UTC
     - cron: '0 2 * * *'
-  workflow_dispatch: # Allows manual triggering from GitHub UI
+  workflow_dispatch:
 
 jobs:
   scrape_data:
-    runs-on: ubuntu-latest # Uses a Linux environment
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4 # Use a newer version for better compatibility
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5 # Use a newer version
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.x' # Use '3.x' to get the latest stable 3.x version, or specify '3.11'/'3.12'
-          cache: 'pip' # Cache pip dependencies for faster builds
+          python-version: '3.x'
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -29,22 +25,24 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Open Food Facts scraper
+        # --- PATH FIX HERE ---
         run: |
-          python openfoodfacts_scraper.py
+          # The GITHUB_WORKSPACE environment variable points to the root of the checked-out repository.
+          # We need to run the script relative to that.
+          python ${{ github.workspace }}/openfoodfacts_scraper.py
 
       - name: Commit and push updated CSV
         run: |
-          git config --global user.name 'github-actions[bot]' # Standard GitHub Actions bot user
+          git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # Add the generated CSV file
-          git add openfoodfacts_cereals.csv
+          # Add the generated CSV file, using the correct path
+          git add ${{ github.workspace }}/openfoodfacts_cereals.csv
           
           # Commit only if there are changes
-          git diff --quiet --exit-code || git commit -m 'Automated data update from Open Food Facts [skip ci]' # '[skip ci]' prevents recursive CI runs
+          git diff --quiet --exit-code || git commit -m 'Automated data update from Open Food Facts [skip ci]'
           
           # Push changes
           git push
         env:
-          # GITHUB_TOKEN is automatically provided by GitHub Actions for write access to the repo
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
