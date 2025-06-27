@@ -77,7 +77,7 @@ st.set_page_config(page_title="European Cereal Tracker", layout="wide", initial_
 st.title("🥣 European Retail Cereal Market Dashboard")
 
 # Create tabs for navigation
-# Changed "Carrefour Live Prices" to "Product Breakdown by Store/Brand"
+# No reference to 'carrefour_cereals.csv' anymore
 tab1, tab2, tab3 = st.tabs(["Open Food Facts Product Data", "Eurostat Retail Sales Trends", "Product Breakdown by Store/Brand"])
 
 with tab1:
