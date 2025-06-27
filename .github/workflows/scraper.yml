@@ -24,10 +24,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Open Food Facts scraper
-        # --- FINAL PATH FIX: Use working-directory ---
-        run: python openfoodfacts_scraper.py
-        working-directory: ${{ github.workspace }} # Ensure command runs from repo root
+      - name: Change to working directory and run scraper
+        # --- FINAL PATH FIX: Explicitly change directory ---
+        run: |
+          cd ${{ github.workspace }} # Change current directory to the repo root
+          python openfoodfacts_scraper.py # Run the script from the new current directory
 
       - name: Commit and push updated CSV
         run: |
