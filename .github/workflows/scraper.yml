@@ -1,36 +1,50 @@
-name: Daily Carrefour Scraper
+name: Daily Open Food Facts Scraper
 
 on:
   schedule:
+    # Runs daily at 2:00 AM UTC
+    # You can adjust this cron schedule as needed.
+    # Example: '0 0 * * *' for daily at midnight UTC
+    # Example: '0 2 * * *' for daily at 2 AM UTC
     - cron: '0 2 * * *'
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual triggering from GitHub UI
 
 jobs:
-  scrape_carrefour:
-    runs-on: ubuntu-latest
+  scrape_data:
+    runs-on: ubuntu-latest # Uses a Linux environment
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4 # Use a newer version for better compatibility
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5 # Use a newer version
         with:
-          python-version: '3.9'
+          python-version: '3.x' # Use '3.x' to get the latest stable 3.x version, or specify '3.11'/'3.12'
+          cache: 'pip' # Cache pip dependencies for faster builds
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Carrefour scraper
+      - name: Run Open Food Facts scraper
         run: |
-          python carrefour_scraper.py
+          python openfoodfacts_scraper.py
 
       - name: Commit and push updated CSV
         run: |
-          git config --global user.name 'github-actions[bot]'
+          git config --global user.name 'github-actions[bot]' # Standard GitHub Actions bot user
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add carrefour_cereals.csv
-          git commit -m 'Update Carrefour cereal prices [skip ci]' || echo "No changes to commit"
+          
+          # Add the generated CSV file
+          git add openfoodfacts_cereals.csv
+          
+          # Commit only if there are changes
+          git diff --quiet --exit-code || git commit -m 'Automated data update from Open Food Facts [skip ci]' # '[skip ci]' prevents recursive CI runs
+          
+          # Push changes
           git push
         env:
+          # GITHUB_TOKEN is automatically provided by GitHub Actions for write access to the repo
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
