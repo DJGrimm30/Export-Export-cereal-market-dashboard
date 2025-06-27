@@ -8,6 +8,9 @@ on:
 jobs:
   scrape_data:
     runs-on: ubuntu-latest
+    # --- NEW: Grant explicit write permissions for contents ---
+    permissions:
+      contents: write # This grants write access to the repository content
 
     steps:
       - name: Checkout repository
@@ -25,7 +28,6 @@ jobs:
           pip install -r requirements.txt
 
       - name: Change to working directory and run scraper
-        # --- FINAL PATH FIX: Explicitly change directory ---
         run: |
           cd ${{ github.workspace }} # Change current directory to the repo root
           python openfoodfacts_scraper.py # Run the script from the new current directory
@@ -35,8 +37,8 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # Add the generated CSV file
-          git add openfoodfacts_cereals.csv
+          # Add the NEW generated CSV file
+          git add openfoodfacts_breakfast_products.csv # <--- CHANGED FROM openfoodfacts_cereals.csv
           
           # Commit only if there are changes
           git diff --quiet --exit-code || git commit -m 'Automated data update from Open Food Facts [skip ci]'
