@@ -165,16 +165,31 @@ with tab2:
     st.write("Visualize overall retail trade index for food products in European countries.")
 
     if not df_eurostat.empty:
-        eurostat_countries = sorted(df_eurostat['geo'].dropna().unique().tolist())
+        # Comprehensive list of European countries (ISO 2-letter codes)
+        # This list can be expanded or refined as needed to include more EU/EEA/EFTA countries.
+        # Ensure these codes match the 'geo' column in your Eurostat CSV.
+        all_european_countries_for_eurostat = sorted([
+            "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "EL", "ES", "FI", "FR", "HR", "HU",
+            "IE", "IS", "IT", "LT", "LU", "LV", "MT", "NL", "NO", "PL", "PT", "RO", "SE", "SI",
+            "SK", "UK" # Including UK as it's often relevant for European data analysis
+        ])
+        
+        # Prioritize 'UK' if it's in the list
+        if 'UK' in all_european_countries_for_eurostat:
+            all_european_countries_for_eurostat.insert(0, all_european_countries_for_eurostat.pop(all_european_countries_for_eurostat.index('UK')))
+        
+        # --- Updated: Use the comprehensive list for selection options ---
         selected_eurostat_country = st.selectbox(
-            "Select Country for Sales Trend", 
-            options=eurostat_countries,
+            "Select Country for Sales Trend (Eurostat)", 
+            options=all_european_countries_for_eurostat, # Use the comprehensive list
             key="eurostat_country_select_main"
         )
         
+        # Filter the loaded dataframe based on selection
         filtered_eurostat_data = df_eurostat[df_eurostat['geo'] == selected_eurostat_country].copy()
         
         if not filtered_eurostat_data.empty:
+            # Sort by date for proper line chart
             filtered_eurostat_data = filtered_eurostat_data.sort_values(by='date')
             fig_sales = px.line(
                 filtered_eurostat_data, 
@@ -187,7 +202,8 @@ with tab2:
             )
             st.plotly_chart(fig_sales, use_container_width=True)
         else:
-            st.info(f"No Eurostat sales data found for {selected_eurostat_country}.")
+            # --- Updated: Provide clearer feedback if data is missing for selected country ---
+            st.info(f"No Eurostat sales data found in the loaded CSV for {selected_eurostat_country}. Please ensure this country's data is present in '{EUROSTAT_CSV}'.")
     else:
         st.info("Eurostat retail sales data not available.")
 
