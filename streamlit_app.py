@@ -15,7 +15,15 @@ EUROSTAT_POPULATION_CSV = "eurostat_population.csv"
 st.set_page_config(
     page_title="European Breakfast Product Tracker", 
     layout="wide", 
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    # --- NEW: Custom Theme for Vibrant UI ---
+    theme={
+        "primaryColor": "#FF4B4B",  # A bright red/orange for primary elements (buttons, sliders)
+        "backgroundColor": "#1E1E1E", # Dark background for contrast
+        "secondaryBackgroundColor": "#2D2D2D", # Slightly lighter dark for secondary elements
+        "textColor": "#F0F2F6",      # Bright white/light gray text
+        "font": "sans serif"
+    }
 )
 
 st.title("🥣 European Breakfast Product Market Dashboard")
@@ -153,13 +161,11 @@ def calculate_yoy_growth(df, value_col='value', date_col='date', geo_col='geo'):
     df_sorted = df.sort_values(by=[geo_col, date_col]).copy()
     df_sorted['year'] = df_sorted[date_col].dt.year
     
-    # Determine frequency (monthly/quarterly/yearly) to apply correct shift
-    # Check if data is yearly (only one month/day per year)
     if df_sorted[date_col].dt.month.nunique() == 1 and df_sorted[date_col].dt.day.nunique() == 1:
         shift_period = 1 # For yearly data
-    elif df_sorted[date_col].dt.month.nunique() <= 4 and df_sorted[date_col].dt.day.nunique() == 1: # Could be quarterly
-        shift_period = 4 # For quarterly data (4 periods in a year)
-    else: # Assume monthly if not yearly/quarterly
+    elif df_sorted[date_col].dt.month.nunique() <= 4 and df_sorted[date_col].dt.day.nunique() == 1:
+        shift_period = 4 # For quarterly data
+    else:
         shift_period = 12 # For monthly data
     
     df_sorted['prev_period_value'] = df_sorted.groupby(geo_col)[value_col].shift(shift_period)
@@ -176,7 +182,6 @@ def calculate_per_capita(value_df, population_df, value_col='value', pop_col='va
     if value_df.empty or population_df.empty:
         return pd.DataFrame()
 
-    # Ensure dates are aligned to year for merging population data
     value_df['year'] = value_df[date_col].dt.year
     population_df['year'] = population_df[date_col].dt.year
 
@@ -187,7 +192,6 @@ def calculate_per_capita(value_df, population_df, value_col='value', pop_col='va
         how='left'
     )
     
-    # Calculate per capita (handle division by zero/NaN population)
     merged_df['Per_Capita_Value'] = merged_df[value_col] / merged_df['population']
     
     return merged_df.dropna(subset=['Per_Capita_Value'])
@@ -260,12 +264,12 @@ with tab1:
             st.plotly_chart(fig_country_filtered, use_container_width=True)
         with col2:
             st.subheader("Top Brands (Filtered)")
-            brand_count_filtered = display_df['Brand'].value_counts().reset_index() # No head(10) for percentage
+            brand_count_filtered = display_df['Brand'].value_counts().reset_index() 
             brand_count_filtered.columns = ['Brand', 'Count']
             brand_count_filtered['Percentage'] = (brand_count_filtered['Count'] / brand_count_filtered['Count'].sum()) * 100
 
-            fig_brand_filtered = px.pie( # Changed to pie chart for distribution
-                brand_count_filtered.head(10), # Show top 10 for pie chart
+            fig_brand_filtered = px.pie( 
+                brand_count_filtered.head(10), 
                 values='Count', 
                 names='Brand', 
                 title='Top 10 Brands Distribution (Filtered)',
@@ -371,8 +375,8 @@ with tab3:
             
             if not store_count.empty:
                 store_count['Percentage'] = (store_count['Count'] / store_count['Count'].sum()) * 100
-                fig_store = px.pie( # Changed to pie chart for distribution
-                    store_count.head(15), # Show top 15 for pie chart
+                fig_store = px.pie( 
+                    store_count.head(15), 
                     values='Count', 
                     names='Store', 
                     title='Top 15 Stores by Product Listings Distribution',
@@ -545,9 +549,6 @@ with tab4: # Consumer Insights tab
                 else:
                     col_insight2.info(f"Not enough data to calculate YoY growth for e-commerce in {selected_country_ecommerce}.")
 
-                # Per Capita E-commerce (Note: E-commerce value is % of individuals, so per capita is less direct here)
-                # If the 'value' was total spending, then per capita would be more applicable.
-                # For now, we'll just show the percentage.
                 st.subheader(f"Individuals Buying Online in {selected_country_ecommerce}")
                 fig_ecommerce = px.line(
                     filtered_ecommerce,
