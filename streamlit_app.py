@@ -4,14 +4,12 @@ import plotly.express as px
 import os
 
 # --- Configuration ---
-# Output CSV filename from Open Food Facts scraper (now expanded to breakfast products)
 OPENFOODFACTS_CSV = "openfoodfacts_breakfast_products.csv" 
-EUROSTAT_RETAIL_CSV = "eurostat_retail_sales.csv" # Original Eurostat retail sales
-# New: Manual download consumer insight files
-ONS_RETAIL_SALES_CSV = "ons_retail_sales.csv" # New: ONS Retail Sales Data (manual download)
-EUROSTAT_CONSUMPTION_CSV = "eurostat_consumption_expenditure.csv" # Manual download: Household Consumption
-EUROSTAT_ECOMMERCE_CSV = "eurostat_ecommerce_buyers.csv" # Manual download: E-commerce buyers
-EUROSTAT_POPULATION_CSV = "eurostat_population.csv" # Manual download: Population data
+EUROSTAT_RETAIL_CSV = "eurostat_retail_sales.csv" 
+ONS_RETAIL_SALES_CSV = "ons_retail_sales.csv" 
+EUROSTAT_CONSUMPTION_CSV = "eurostat_consumption_expenditure.csv" 
+EUROSTAT_ECOMMERCE_CSV = "eurostat_ecommerce_buyers.csv" 
+EUROSTAT_POPULATION_CSV = "eurostat_population.csv" 
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(
@@ -26,135 +24,107 @@ st.markdown("---")
 # --- Data Loading Functions ---
 @st.cache_data
 def load_eurostat_data(filepath, geo_col='geo', value_col='value', date_col='date', specific_filters=None):
-    """
-    Generic function to load and preprocess Eurostat CSVs (now used for manually downloaded files).
-    Assumes first column is time period or DATAFLOW if not specified.
-    """
+    """Generic function to load and preprocess Eurostat CSVs."""
     if not os.path.exists(filepath):
         st.error(f"Error: Data file '{filepath}' not found. Please ensure it's in the same folder as the app.")
         return pd.DataFrame()
     try:
         df = pd.read_csv(filepath)
         
-        # --- Robust column detection for manually downloaded Eurostat files ---
-        # First, try to identify time period column using common names
         detected_date_col = None
-        for col_name in ['TIME_PERIOD', 'time', 'date', 'DATE']: # Common names for date/time in Eurostat
+        for col_name in ['TIME_PERIOD', 'time', 'date', 'DATE']:
             if col_name in df.columns:
                 detected_date_col = col_name
                 break
         
-        # If not found directly, check if the first column is complex (like 'DATAFLOW,.../TIME_PERIOD')
         if not detected_date_col and '\\' in df.columns[0]:
-            detected_date_col = df.columns[0].split('\\')[-1].strip() # Get header after backslash
-            # Split the first column into individual dimensions
+            detected_date_col = df.columns[0].split('\\')[-1].strip()
             complex_header_dims = df.columns[0].split('\\')[0].split(',')
             for i, dim_name in enumerate(complex_header_dims):
                 df[dim_name.strip()] = df[df.columns[0]].apply(lambda x: x.split(',')[i].strip() if len(x.split(',')) > i else None)
-            df = df.drop(columns=[df.columns[0]]) # Drop the original complex column
-        elif not detected_date_col: # Fallback to first column if no other date column found
+            df = df.drop(columns=[df.columns[0]])
+        elif not detected_date_col:
             detected_date_col = df.columns[0]
             
-        # Rename the detected date column to 'date'
         if detected_date_col and detected_date_col != 'date':
             df = df.rename(columns={detected_date_col: 'date'})
         
-        # Ensure 'date' column is datetime
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
         df.dropna(subset=['date'], inplace=True)
 
-        # Identify GEO column
         detected_geo_col = None
-        for col_name in ['GEO', 'geo', 'REGION', 'country']: # Common names for geographical info
+        for col_name in ['GEO', 'geo', 'REGION', 'country']:
             if col_name in df.columns:
                 detected_geo_col = col_name
                 break
         if detected_geo_col and detected_geo_col != 'geo':
             df = df.rename(columns={detected_geo_col: 'geo'})
-        elif 'geo' not in df.columns: # If no geo column found, and not specified in map
+        elif 'geo' not in df.columns:
             st.warning(f"Warning: 'geo' column not found in {filepath}. Defaulting to 'Unknown'.")
             df['geo'] = 'Unknown'
 
-        # Identify value column
         detected_value_col = None
-        for col_name in ['VALUE', 'value', 'OBS_VALUE']: # Common names for value
+        for col_name in ['VALUE', 'value', 'OBS_VALUE']:
             if col_name in df.columns:
                 detected_value_col = col_name
                 break
         if detected_value_col and detected_value_col != 'value':
             df = df.rename(columns={detected_value_col: 'value'})
-        elif 'value' not in df.columns: # If no value column found, and not specified in map
+        elif 'value' not in df.columns:
             st.warning(f"Warning: 'value' column not found in {filepath}. Defaulting to 0.")
-            df['value'] = 0 # Placeholder
+            df['value'] = 0
 
-        # Apply specific filters if provided (e.g., NACE_R2, COFOG_L2, IND_TYPE, AGE, SEX, UNIT, INDIC_BT)
         if specific_filters:
             for col, val in specific_filters.items():
                 if col in df.columns:
-                    df = df[df[col].astype(str).str.strip() == str(val).strip()] # Strip whitespace for robust comparison
+                    df = df[df[col].astype(str).str.strip() == str(val).strip()]
                 else:
                     st.warning(f"Filter column '{col}' not found in {filepath}. Skipping filter.")
 
-        return df[['date', 'geo', 'value']].copy() # Return only the essential columns
+        return df[['date', 'geo', 'value']].copy()
     except Exception as e:
         st.error(f"Failed to load or parse Eurostat data from '{filepath}': {e}")
         return pd.DataFrame()
 
 @st.cache_data
 def load_ons_retail_sales_data():
-    """
-    Loads ONS Retail Sales data from a CSV file.
-    Assumes the CSV structure typical for ONS time series downloads.
-    """
+    """Loads ONS Retail Sales data from a CSV file."""
     if not os.path.exists(ONS_RETAIL_SALES_CSV):
         st.error(f"Error: ONS data file '{ONS_RETAIL_SALES_CSV}' not found. Please download it manually from ONS and place it in the folder.")
         return pd.DataFrame()
     try:
         df = pd.read_csv(ONS_RETAIL_SALES_CSV)
-        # ONS CSVs usually have a header row and then the data.
-        # Common ONS structure:
-        # 1st col: CDID (unique identifier)
-        # 2nd col: TSMV (Name of the series)
-        # 3rd col: Units (e.g., percentage, millions)
-        # 4th col: Date (e.g., Jan 2023)
-        # 5th col: Value
         
-        # Look for a column that contains dates (e.g., 'Date', 'Month', 'Year')
         date_col_name = None
         for col in df.columns:
             if 'date' in col.lower() or 'month' in col.lower() or 'time' in col.lower():
                 date_col_name = col
                 break
         if not date_col_name:
-            # Fallback: assume the 4th column is often the date in ONS downloads
             if len(df.columns) >= 4:
                 date_col_name = df.columns[3]
             else:
                 st.warning(f"Could not identify date column in ONS data: {df.columns.tolist()}")
                 return pd.DataFrame()
 
-        # Look for a column that contains values (e.g., 'Value', 'Observation')
         value_col_name = None
         for col in df.columns:
-            if 'value' in col.lower() or 'obs' in col.lower(): # 'obs' for OBS_VALUE
+            if 'value' in col.lower() or 'obs' in col.lower():
                 value_col_name = col
                 break
         if not value_col_name:
-            # Fallback: assume the 5th column is often the value in ONS downloads
             if len(df.columns) >= 5:
                 value_col_name = df.columns[4]
             else:
                 st.warning(f"Could not identify value column in ONS data: {df.columns.tolist()}")
                 return pd.DataFrame()
         
-        # Select and rename columns
         ons_df = df[[date_col_name, value_col_name]].copy()
-        ons_df.columns = ['date', 'value'] # Standardize names
+        ons_df.columns = ['date', 'value']
 
-        # Convert date column
         ons_df['date'] = pd.to_datetime(ons_df['date'], errors='coerce')
         ons_df.dropna(subset=['date', 'value'], inplace=True)
-        ons_df['geo'] = 'UK' # ONS data is for UK/GB
+        ons_df['geo'] = 'UK'
 
         return ons_df[['date', 'geo', 'value']].copy()
     except Exception as e:
@@ -163,9 +133,7 @@ def load_ons_retail_sales_data():
 
 @st.cache_data
 def load_openfoodfacts_data():
-    """
-    Loads breakfast product data from the openfoodfacts_breakfast_products.csv file.
-    """
+    """Loads breakfast product data from the openfoodfacts_breakfast_products.csv file."""
     if not os.path.exists(OPENFOODFACTS_CSV):
         st.warning(f"Product data file '{OPENFOODFACTS_CSV}' not found. Please run `openfoodfacts_scraper.py` first to generate it.")
         return pd.DataFrame()
@@ -176,18 +144,39 @@ def load_openfoodfacts_data():
         st.error(f"Failed to load or parse product data from '{OPENFOODFACTS_CSV}': {e}")
         return pd.DataFrame()
 
+# --- Data Processing for Insights ---
+def calculate_yoy_growth(df, value_col='value', date_col='date', geo_col='geo'):
+    """Calculates Year-over-Year growth for a DataFrame."""
+    if df.empty or value_col not in df.columns or date_col not in df.columns or geo_col not in df.columns:
+        return pd.DataFrame()
+    
+    df_sorted = df.sort_values(by=[geo_col, date_col]).copy()
+    df_sorted['year'] = df_sorted[date_col].dt.year
+    df_sorted['month'] = df_sorted[date_col].dt.month # For monthly data, to align correctly
+
+    # Calculate previous year's value for each entry
+    df_sorted['prev_year_value'] = df_sorted.groupby(geo_col)[value_col].shift(12) # Shift by 12 for monthly data
+    
+    # If data is yearly, shift by 1
+    if df_sorted[date_col].dt.is_month_start.all() and df_sorted[date_col].dt.month.nunique() == 1: # Check if it's yearly data (e.g., only Jan 1st)
+         df_sorted['prev_year_value'] = df_sorted.groupby(geo_col)[value_col].shift(1)
+
+    # Calculate YoY growth
+    df_sorted['YoY_Growth'] = ((df_sorted[value_col] - df_sorted['prev_year_value']) / df_sorted['prev_year_value']) * 100
+    
+    return df_sorted.dropna(subset=['YoY_Growth'])
+
 # --- Load Data at App Start ---
 df_openfoodfacts = load_openfoodfacts_data()
 df_eurostat_retail = load_eurostat_data(EUROSTAT_RETAIL_CSV, specific_filters={'NACE_R2': 'G47', 'INDIC_BT': 'VOL_IDX_RT'})
 df_eurostat_consumption = load_eurostat_data(EUROSTAT_CONSUMPTION_CSV, specific_filters={'COFOG_L2': 'CP01', 'UNIT': 'PC_CP'})
 df_eurostat_ecommerce = load_eurostat_data(EUROSTAT_ECOMMERCE_CSV, specific_filters={'IND_TYPE': 'I_IBSPS', 'UNIT': 'PC_IND'})
 df_eurostat_population = load_eurostat_data(EUROSTAT_POPULATION_CSV, specific_filters={'AGE': 'TOTAL', 'SEX': 'T'})
-df_ons_retail_sales = load_ons_retail_sales_data() # New: Load ONS data
+df_ons_retail_sales = load_ons_retail_sales_data()
 
 # --- Sidebar Filters ---
 st.sidebar.header("Global Filters")
 
-# Country Multi-select Filter
 all_countries_off = sorted(df_openfoodfacts['Country'].dropna().unique().tolist()) if not df_openfoodfacts.empty else []
 selected_countries_off = st.sidebar.multiselect(
     "Select Countries for Product Data",
@@ -195,7 +184,6 @@ selected_countries_off = st.sidebar.multiselect(
     default=all_countries_off
 )
 
-# Product Type (Search Term) Multi-select Filter
 all_search_terms = sorted(df_openfoodfacts['Search_Term'].dropna().unique().tolist()) if not df_openfoodfacts.empty else []
 selected_search_terms = st.sidebar.multiselect(
     "Select Breakfast Product Types",
@@ -203,7 +191,6 @@ selected_search_terms = st.sidebar.multiselect(
     default=all_search_terms
 )
 
-# Apply global filters to Open Food Facts data
 filtered_df_off = df_openfoodfacts[
     (df_openfoodfacts['Country'].isin(selected_countries_off)) &
     (df_openfoodfacts['Search_Term'].isin(selected_search_terms))
@@ -284,7 +271,24 @@ with tab2:
         filtered_eurostat_retail_data = df_eurostat_retail[df_eurostat_retail['geo'] == selected_eurostat_country].copy()
         
         if not filtered_eurostat_retail_data.empty:
-            filtered_eurostat_retail_data = filtered_eurostat_retail_data.sort_values(by='date')
+            # Calculate and display YoY growth for Retail Sales
+            retail_yoy_growth = calculate_yoy_growth(filtered_eurostat_retail_data, geo_col='geo')
+            
+            if not retail_yoy_growth.empty:
+                fig_retail_yoy = px.line(
+                    retail_yoy_growth,
+                    x="date",
+                    y="YoY_Growth",
+                    title=f"Retail Sales Index YoY Growth in {selected_eurostat_country}",
+                    labels={"YoY_Growth": "YoY Growth (%)", "date": "Date"},
+                    hover_data={"YoY_Growth": ":.2f%"},
+                    markers=True
+                )
+                st.plotly_chart(fig_retail_yoy, use_container_width=True)
+            else:
+                st.info(f"Not enough data to calculate YoY growth for Retail Sales in {selected_eurostat_country}.")
+
+            # Original Retail Sales Index chart
             fig_sales = px.line(
                 filtered_eurostat_retail_data, 
                 x="date", 
@@ -308,15 +312,22 @@ with tab3:
         col3, col4 = st.columns(2)
 
         with col3:
-            st.subheader("Products by Breakfast Type")
+            st.subheader("Products by Breakfast Type (Distribution)")
             search_term_count_filtered = filtered_df_off['Search_Term'].value_counts().reset_index()
             search_term_count_filtered.columns = ['Breakfast Type', 'Count']
+            
+            # Add percentage column
+            search_term_count_filtered['Percentage'] = (search_term_count_filtered['Count'] / search_term_count_filtered['Count'].sum()) * 100
+
             fig_search_term = px.pie(
                 search_term_count_filtered, 
                 values='Count', 
                 names='Breakfast Type', 
-                title='Distribution of Products by Breakfast Type'
+                title='Distribution of Products by Breakfast Type',
+                hover_data=['Percentage'], # Show percentage on hover
+                labels={'Percentage': '%'} # Label for hover
             )
+            fig_search_term.update_traces(textinfo='percent+label') # Show percentage and label on slices
             st.plotly_chart(fig_search_term, use_container_width=True)
 
         with col4:
@@ -362,19 +373,33 @@ with tab4: # Consumer Insights tab
     st.header("🧠 Consumer Insights & Macro Trends")
     st.write("Explore broader economic and demographic trends influencing consumer behavior in Europe and the UK.")
 
-    # Selectbox for which insight to view
     insight_type = st.selectbox(
         "Select Consumer Insight Type",
         options=["ONS Retail Sales (UK)", "Household Consumption (Eurostat)", "E-commerce Penetration (Eurostat)", "Population Trends (Eurostat)"],
         key="insight_type_select"
     )
 
-    col_insight1, col_insight2 = st.columns(2) # Two columns for controls and chart
+    col_insight1, col_insight2 = st.columns(2)
 
     # --- ONS Retail Sales ---
     if insight_type == "ONS Retail Sales (UK)":
         if not df_ons_retail_sales.empty:
-            # ONS data is typically only for UK, so no country filter needed here directly
+            ons_yoy_growth = calculate_yoy_growth(df_ons_retail_sales, geo_col='geo')
+            if not ons_yoy_growth.empty:
+                st.subheader("UK Retail Sales Index (ONS) - YoY Growth")
+                fig_ons_yoy = px.line(
+                    ons_yoy_growth,
+                    x="date",
+                    y="YoY_Growth",
+                    title="UK Retail Sales Index YoY Growth (ONS)",
+                    labels={"YoY_Growth": "YoY Growth (%)", "date": "Date"},
+                    hover_data={"YoY_Growth": ":.2f%"},
+                    markers=True
+                )
+                col_insight2.plotly_chart(fig_ons_yoy, use_container_width=True)
+            else:
+                col_insight2.info(f"Not enough data to calculate YoY growth for ONS Retail Sales.")
+
             st.subheader("UK Retail Sales Index (ONS)")
             fig_ons_retail = px.line(
                 df_ons_retail_sales,
@@ -403,6 +428,23 @@ with tab4: # Consumer Insights tab
             ].sort_values(by='date')
             
             if not filtered_consumption.empty:
+                consumption_yoy_growth = calculate_yoy_growth(filtered_consumption, geo_col='geo')
+                if not consumption_yoy_growth.empty:
+                    st.subheader(f"Household Consumption on Food YoY Growth in {selected_country_consumption}")
+                    fig_consumption_yoy = px.line(
+                        consumption_yoy_growth,
+                        x="date",
+                        y="YoY_Growth",
+                        title=f"Household Consumption on Food YoY Growth in {selected_country_consumption}",
+                        labels={"YoY_Growth": "YoY Growth (%)", "date": "Year"},
+                        hover_data={"YoY_Growth": ":.2f%"},
+                        markers=True
+                    )
+                    col_insight2.plotly_chart(fig_consumption_yoy, use_container_width=True)
+                else:
+                    col_insight2.info(f"Not enough data to calculate YoY growth for consumption in {selected_country_consumption}.")
+
+                st.subheader(f"Household Consumption on Food in {selected_country_consumption}")
                 fig_consumption = px.line(
                     filtered_consumption,
                     x="date",
@@ -432,6 +474,23 @@ with tab4: # Consumer Insights tab
             ].sort_values(by='date')
 
             if not filtered_ecommerce.empty:
+                ecommerce_yoy_growth = calculate_yoy_growth(filtered_ecommerce, geo_col='geo')
+                if not ecommerce_yoy_growth.empty:
+                    st.subheader(f"Individuals Buying Online YoY Growth in {selected_country_ecommerce}")
+                    fig_ecommerce_yoy = px.line(
+                        ecommerce_yoy_growth,
+                        x="date",
+                        y="YoY_Growth",
+                        title=f"Individuals Buying Online YoY Growth in {selected_country_ecommerce}",
+                        labels={"YoY_Growth": "YoY Growth (%)", "date": "Year"},
+                        hover_data={"YoY_Growth": ":.2f%"},
+                        markers=True
+                    )
+                    col_insight2.plotly_chart(fig_ecommerce_yoy, use_container_width=True)
+                else:
+                    col_insight2.info(f"Not enough data to calculate YoY growth for e-commerce in {selected_country_ecommerce}.")
+
+                st.subheader(f"Individuals Buying Online in {selected_country_ecommerce}")
                 fig_ecommerce = px.line(
                     filtered_ecommerce,
                     x="date",
@@ -461,6 +520,23 @@ with tab4: # Consumer Insights tab
             ].sort_values(by='date')
 
             if not filtered_population.empty:
+                population_yoy_growth = calculate_yoy_growth(filtered_population, geo_col='geo')
+                if not population_yoy_growth.empty:
+                    st.subheader(f"Total Population YoY Growth in {selected_country_population}")
+                    fig_population_yoy = px.line(
+                        population_yoy_growth,
+                        x="date",
+                        y="YoY_Growth",
+                        title=f"Total Population YoY Growth in {selected_country_population}",
+                        labels={"YoY_Growth": "YoY Growth (%)", "date": "Year"},
+                        hover_data={"YoY_Growth": ":.2f%"},
+                        markers=True
+                    )
+                    col_insight2.plotly_chart(fig_population_yoy, use_container_width=True)
+                else:
+                    col_insight2.info(f"Not enough data to calculate YoY growth for population in {selected_country_population}.")
+
+                st.subheader(f"Total Population in {selected_country_population}")
                 fig_population = px.line(
                     filtered_population,
                     x="date",
