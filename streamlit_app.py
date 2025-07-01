@@ -152,19 +152,45 @@ def calculate_yoy_growth(df, value_col='value', date_col='date', geo_col='geo'):
     
     df_sorted = df.sort_values(by=[geo_col, date_col]).copy()
     df_sorted['year'] = df_sorted[date_col].dt.year
-    df_sorted['month'] = df_sorted[date_col].dt.month # For monthly data, to align correctly
-
-    # Calculate previous year's value for each entry
-    df_sorted['prev_year_value'] = df_sorted.groupby(geo_col)[value_col].shift(12) # Shift by 12 for monthly data
     
-    # If data is yearly, shift by 1
-    if df_sorted[date_col].dt.is_month_start.all() and df_sorted[date_col].dt.month.nunique() == 1: # Check if it's yearly data (e.g., only Jan 1st)
-         df_sorted['prev_year_value'] = df_sorted.groupby(geo_col)[value_col].shift(1)
-
-    # Calculate YoY growth
-    df_sorted['YoY_Growth'] = ((df_sorted[value_col] - df_sorted['prev_year_value']) / df_sorted['prev_year_value']) * 100
+    # Determine frequency (monthly/quarterly/yearly) to apply correct shift
+    # Check if data is yearly (only one month/day per year)
+    if df_sorted[date_col].dt.month.nunique() == 1 and df_sorted[date_col].dt.day.nunique() == 1:
+        shift_period = 1 # For yearly data
+    elif df_sorted[date_col].dt.month.nunique() <= 4 and df_sorted[date_col].dt.day.nunique() == 1: # Could be quarterly
+        shift_period = 4 # For quarterly data (4 periods in a year)
+    else: # Assume monthly if not yearly/quarterly
+        shift_period = 12 # For monthly data
+    
+    df_sorted['prev_period_value'] = df_sorted.groupby(geo_col)[value_col].shift(shift_period)
+    df_sorted['YoY_Growth'] = ((df_sorted[value_col] - df_sorted['prev_period_value']) / df_sorted['prev_period_value']) * 100
     
     return df_sorted.dropna(subset=['YoY_Growth'])
+
+def calculate_per_capita(value_df, population_df, value_col='value', pop_col='value', date_col='date', geo_col='geo'):
+    """
+    Calculates per capita figures by merging value data with population data.
+    Assumes both dataframes have 'date', 'geo', and 'value' columns.
+    Population values should be in the same units (e.g., thousands, millions) as consumption values for meaningful per capita.
+    """
+    if value_df.empty or population_df.empty:
+        return pd.DataFrame()
+
+    # Ensure dates are aligned to year for merging population data
+    value_df['year'] = value_df[date_col].dt.year
+    population_df['year'] = population_df[date_col].dt.year
+
+    merged_df = pd.merge(
+        value_df,
+        population_df[[geo_col, 'year', pop_col]].rename(columns={pop_col: 'population'}),
+        on=[geo_col, 'year'],
+        how='left'
+    )
+    
+    # Calculate per capita (handle division by zero/NaN population)
+    merged_df['Per_Capita_Value'] = merged_df[value_col] / merged_df['population']
+    
+    return merged_df.dropna(subset=['Per_Capita_Value'])
 
 # --- Load Data at App Start ---
 df_openfoodfacts = load_openfoodfacts_data()
@@ -234,14 +260,19 @@ with tab1:
             st.plotly_chart(fig_country_filtered, use_container_width=True)
         with col2:
             st.subheader("Top Brands (Filtered)")
-            brand_count_filtered = display_df['Brand'].value_counts().head(10).reset_index()
+            brand_count_filtered = display_df['Brand'].value_counts().reset_index() # No head(10) for percentage
             brand_count_filtered.columns = ['Brand', 'Count']
-            fig_brand_filtered = px.bar(
-                brand_count_filtered, 
-                x='Brand', 
-                y='Count', 
-                title='Top 10 Brands (Filtered)'
+            brand_count_filtered['Percentage'] = (brand_count_filtered['Count'] / brand_count_filtered['Count'].sum()) * 100
+
+            fig_brand_filtered = px.pie( # Changed to pie chart for distribution
+                brand_count_filtered.head(10), # Show top 10 for pie chart
+                values='Count', 
+                names='Brand', 
+                title='Top 10 Brands Distribution (Filtered)',
+                hover_data=['Percentage'],
+                labels={'Percentage': '%'}
             )
+            fig_brand_filtered.update_traces(textinfo='percent+label')
             st.plotly_chart(fig_brand_filtered, use_container_width=True)
 
         st.download_button(
@@ -271,10 +302,10 @@ with tab2:
         filtered_eurostat_retail_data = df_eurostat_retail[df_eurostat_retail['geo'] == selected_eurostat_country].copy()
         
         if not filtered_eurostat_retail_data.empty:
-            # Calculate and display YoY growth for Retail Sales
             retail_yoy_growth = calculate_yoy_growth(filtered_eurostat_retail_data, geo_col='geo')
             
             if not retail_yoy_growth.empty:
+                st.subheader(f"Retail Sales Index YoY Growth in {selected_eurostat_country}")
                 fig_retail_yoy = px.line(
                     retail_yoy_growth,
                     x="date",
@@ -288,7 +319,7 @@ with tab2:
             else:
                 st.info(f"Not enough data to calculate YoY growth for Retail Sales in {selected_eurostat_country}.")
 
-            # Original Retail Sales Index chart
+            st.subheader(f"Retail Sales Index in {selected_eurostat_country} (Eurostat)")
             fig_sales = px.line(
                 filtered_eurostat_retail_data, 
                 x="date", 
@@ -316,7 +347,6 @@ with tab3:
             search_term_count_filtered = filtered_df_off['Search_Term'].value_counts().reset_index()
             search_term_count_filtered.columns = ['Breakfast Type', 'Count']
             
-            # Add percentage column
             search_term_count_filtered['Percentage'] = (search_term_count_filtered['Count'] / search_term_count_filtered['Count'].sum()) * 100
 
             fig_search_term = px.pie(
@@ -324,14 +354,14 @@ with tab3:
                 values='Count', 
                 names='Breakfast Type', 
                 title='Distribution of Products by Breakfast Type',
-                hover_data=['Percentage'], # Show percentage on hover
-                labels={'Percentage': '%'} # Label for hover
+                hover_data=['Percentage'], 
+                labels={'Percentage': '%'}
             )
-            fig_search_term.update_traces(textinfo='percent+label') # Show percentage and label on slices
+            fig_search_term.update_traces(textinfo='percent+label')
             st.plotly_chart(fig_search_term, use_container_width=True)
 
         with col4:
-            st.subheader("Products by Store")
+            st.subheader("Products by Store (Distribution)")
             filtered_df_off['Store_List'] = filtered_df_off['Store'].astype(str).apply(lambda x: [s.strip() for s in x.split(',') if s.strip()])
             exploded_stores = filtered_df_off.explode('Store_List')
             
@@ -340,13 +370,16 @@ with tab3:
             store_count = store_count[~store_count['Store'].isin(['N/A', ''])] 
             
             if not store_count.empty:
-                fig_store = px.bar(
-                    store_count.head(15), 
-                    x='Store', 
-                    y='Count', 
-                    title='Top Stores by Product Listings',
-                    labels={'Count': 'Number of Products'}
+                store_count['Percentage'] = (store_count['Count'] / store_count['Count'].sum()) * 100
+                fig_store = px.pie( # Changed to pie chart for distribution
+                    store_count.head(15), # Show top 15 for pie chart
+                    values='Count', 
+                    names='Store', 
+                    title='Top 15 Stores by Product Listings Distribution',
+                    hover_data=['Percentage'],
+                    labels={'Percentage': '%'}
                 )
+                fig_store.update_traces(textinfo='percent+label')
                 st.plotly_chart(fig_store, use_container_width=True)
             else:
                 st.info("No meaningful store data found in Open Food Facts for selected filters.")
@@ -444,6 +477,28 @@ with tab4: # Consumer Insights tab
                 else:
                     col_insight2.info(f"Not enough data to calculate YoY growth for consumption in {selected_country_consumption}.")
 
+                # Per Capita Consumption
+                if not df_eurostat_population.empty:
+                    consumption_per_capita = calculate_per_capita(
+                        filtered_consumption, df_eurostat_population,
+                        value_col='value', pop_col='value', date_col='date', geo_col='geo'
+                    )
+                    if not consumption_per_capita.empty:
+                        st.subheader(f"Household Food Consumption Per Capita in {selected_country_consumption}")
+                        fig_consumption_pc = px.line(
+                            consumption_per_capita,
+                            x="date",
+                            y="Per_Capita_Value",
+                            title=f"Household Food Consumption Per Capita in {selected_country_consumption}",
+                            labels={"Per_Capita_Value": "Consumption Per Capita", "date": "Year"},
+                            hover_data={"Per_Capita_Value": ":.2f"},
+                            markers=True
+                        )
+                        col_insight2.plotly_chart(fig_consumption_pc, use_container_width=True)
+                    else:
+                        col_insight2.info(f"Not enough population data for per capita consumption in {selected_country_consumption}.")
+
+
                 st.subheader(f"Household Consumption on Food in {selected_country_consumption}")
                 fig_consumption = px.line(
                     filtered_consumption,
@@ -490,6 +545,9 @@ with tab4: # Consumer Insights tab
                 else:
                     col_insight2.info(f"Not enough data to calculate YoY growth for e-commerce in {selected_country_ecommerce}.")
 
+                # Per Capita E-commerce (Note: E-commerce value is % of individuals, so per capita is less direct here)
+                # If the 'value' was total spending, then per capita would be more applicable.
+                # For now, we'll just show the percentage.
                 st.subheader(f"Individuals Buying Online in {selected_country_ecommerce}")
                 fig_ecommerce = px.line(
                     filtered_ecommerce,
