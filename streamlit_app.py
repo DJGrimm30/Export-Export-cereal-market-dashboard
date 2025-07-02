@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
-import re # Import regex module
+import re
 
 # --- Configuration ---
 OPENFOODFACTS_CSV = "openfoodfacts_breakfast_products.csv" 
@@ -28,66 +28,55 @@ st.markdown("---")
 def load_eurostat_data(filepath, geo_col='geo', value_col='value', date_col='date', specific_filters=None):
     """
     Generic function to load and preprocess Eurostat CSVs.
-    Handles complex first column headers common in Eurostat downloads.
+    Handles complex first column headers common in Eurostat downloads by melting.
     """
+    st.write(f"Attempting to load: {filepath}") # Debug print
     if not os.path.exists(filepath):
         st.error(f"Error: Data file '{filepath}' not found. Please ensure it's in the same folder as the app.")
         return pd.DataFrame()
     try:
         df = pd.read_csv(filepath)
+        st.write(f"Raw columns for {filepath}: {df.columns.tolist()}") # Debug print
         
-        # --- NEW ROBUST PARSING FOR EUROSTAT CSV HEADERS ---
-        # The first column header often contains multiple dimensions (e.g., "DATAFLOW,FREQ,UNIT,GEO\TIME_PERIOD")
         raw_first_col_header = df.columns[0]
         
-        # Split the first column header into dimensions and time_period part
         if '\\' in raw_first_col_header:
             dimension_names_str = raw_first_col_header.split('\\')[0]
-            time_period_header_name = raw_first_col_header.split('\\')[1].strip()
-        else: # Fallback if no backslash, assume all parts are dimensions
+            time_period_header_name_raw = raw_first_col_header.split('\\')[1].strip()
+        else:
             dimension_names_str = raw_first_col_header
-            time_period_header_name = None # Will try to infer later
+            time_period_header_name_raw = None 
         
         dimension_names = [d.strip() for d in dimension_names_str.split(',')]
+        st.write(f"Detected dimension names from first header: {dimension_names}") # Debug print
 
-        # Create new columns for dimensions from the first column's content
-        temp_dim_split_col = '__temp_dim_split__' # Unique temporary column name
-        df[temp_dim_split_col] = df[raw_first_col_header] # Copy content of complex first column
+        temp_dim_split_col = '__temp_dim_split__'
+        df[temp_dim_split_col] = df[raw_first_col_header]
 
         for i, dim_name in enumerate(dimension_names):
             df[dim_name] = df[temp_dim_split_col].apply(lambda x: x.split(',')[i].strip() if len(x.split(',')) > i else None)
         
-        # Drop the original complex first column and the temporary split column
         df = df.drop(columns=[raw_first_col_header, temp_dim_split_col])
+        st.write(f"Columns after splitting first header: {df.columns.tolist()}") # Debug print
 
-        # Identify time period columns (usually years, or year-quarter/month formats)
-        time_period_cols = [col for col in df.columns if re.match(r'^\d{4}(Q[1-4]|M\d{2})?$', col.strip())]
+        time_period_cols_to_melt = [col for col in df.columns if re.match(r'^\d{4}(Q[1-4]|M\d{2})?$', col.strip())]
         
-        # Identify the value column (often 'OBS_VALUE' or the last numerical column after melting)
-        value_col_in_raw_data = None
-        if 'OBS_VALUE' in df.columns:
-            value_col_in_raw_data = 'OBS_VALUE'
-        else: # Try to find a column that is not a dimension and not a time period, and contains numbers
-            candidate_value_cols = [col for col in df.columns if col not in dimension_names and col not in time_period_cols and pd.api.types.is_numeric_dtype(df[col])]
-            if candidate_value_cols:
-                value_col_in_raw_data = candidate_value_cols[0] # Take the first numerical candidate
-
-        if not time_period_cols or not value_col_in_raw_data:
-            st.warning(f"Warning: Could not identify time periods or value column in {filepath}. Columns: {df.columns.tolist()}")
+        value_col_in_raw_data = 'OBS_VALUE' # Standard Eurostat value column
+        
+        if not time_period_cols_to_melt or value_col_in_raw_data not in df.columns:
+            st.warning(f"Warning: Could not identify time periods or OBS_VALUE column in {filepath}. Columns: {df.columns.tolist()}")
             return pd.DataFrame()
 
-        # Melt the DataFrame to unpivot time period columns into rows
-        id_vars_for_melt = [col for col in df.columns if col not in time_period_cols and col != value_col_in_raw_data]
-        df_melted = df.melt(id_vars=id_vars_for_melt, value_vars=time_period_cols, var_name='date', value_name='value')
+        id_vars_for_melt = [col for col in df.columns if col not in time_period_cols_to_melt and col != value_col_in_raw_data]
+        
+        df_melted = df.melt(id_vars=id_vars_for_melt, value_vars=time_period_cols_to_melt, var_name='date_raw', value_name='value_raw')
 
-        # Clean the 'value' column (remove non-numeric characters like flags, colons for missing data)
         df_melted['value'] = pd.to_numeric(
-            df_melted['value'].astype(str).str.replace(r'[a-zA-Z\s:]', '', regex=True), 
+            df_melted['value_raw'].astype(str).str.replace(r'[a-zA-Z\s:]', '', regex=True), 
             errors='coerce'
         )
         df_melted.dropna(subset=['value'], inplace=True)
 
-        # Convert 'date' to datetime objects, handling different formats
         def parse_eurostat_date(date_str):
             if pd.isna(date_str): return pd.NaT
             date_str = str(date_str).strip()
@@ -96,34 +85,41 @@ def load_eurostat_data(filepath, geo_col='geo', value_col='value', date_col='dat
             elif re.match(r'^\d{4}M\d{2}$', date_str): return pd.to_datetime(date_str, format='%YM%m')
             return pd.NaT
 
-        df_melted['date'] = df_melted['date'].apply(parse_eurostat_date)
+        df_melted['date'] = df_melted['date_raw'].apply(parse_eurostat_date)
         df_melted.dropna(subset=['date'], inplace=True)
 
-        # Standardize 'geo' column name if it exists (Eurostat uses 'GEO')
         if 'GEO' in df_melted.columns:
             df_melted = df_melted.rename(columns={'GEO': 'geo'})
         
+        # --- NEW: Standardize other common Eurostat dimension columns ---
+        if 'UNIT' in df_melted.columns:
+            df_melted = df_melted.rename(columns={'UNIT': 'unit'})
+        if 'FREQ' in df_melted.columns:
+            df_melted = df_melted.rename(columns={'FREQ': 'freq'})
+
         # Apply specific filters (e.g., NACE_R2='G47', COFOG_L2='CP01')
         if specific_filters:
+            st.write(f"Applying filters for {filepath}: {specific_filters}") # Debug print
             for col_filter_name, filter_value in specific_filters.items():
                 if col_filter_name in df_melted.columns:
+                    # Filter and also print how many rows remain
+                    initial_rows = len(df_melted)
                     df_melted = df_melted[df_melted[col_filter_name].astype(str).str.strip() == str(filter_value).strip()]
+                    st.write(f"Filtered by {col_filter_name}='{filter_value}'. Rows: {initial_rows} -> {len(df_melted)}") # Debug print
                 else:
                     st.warning(f"Filter column '{col_filter_name}' not found in DataFrame for filtering '{filepath}'. Available columns: {df_melted.columns.tolist()}")
 
-        # Final column selection for dashboard output
         required_final_cols = ['date', 'geo', 'value']
-        # Ensure 'geo' is present before selecting
         if 'geo' not in df_melted.columns:
             st.warning(f"Final 'geo' column missing after processing {filepath}. Defaulting to 'Unknown'.")
-            df_melted['geo'] = 'Unknown' # Add if not found
-
-        # Ensure 'value' is present
+            df_melted['geo'] = 'Unknown' 
         if 'value' not in df_melted.columns:
             st.warning(f"Final 'value' column missing after processing {filepath}. Defaulting to 0.")
-            df_melted['value'] = 0 # Add if not found
+            df_melted['value'] = 0 
 
         final_df = df_melted[required_final_cols].copy()
+        st.write(f"Final DataFrame shape for {filepath}: {final_df.shape}") # Debug print
+        st.write(f"Final DataFrame head for {filepath}:\n{final_df.head()}") # Debug print
         return final_df
 
     except Exception as e:
@@ -145,7 +141,7 @@ def load_ons_retail_sales_data():
                 date_col_name = col
                 break
         if not date_col_name:
-            if len(df.columns) >= 4: # Common position for date in ONS
+            if len(df.columns) >= 4:
                 date_col_name = df.columns[3]
             else:
                 st.warning(f"Could not identify date column in ONS data: {df.columns.tolist()}")
@@ -153,11 +149,11 @@ def load_ons_retail_sales_data():
 
         value_col_name = None
         for col in df.columns:
-            if 'value' in col.lower() or 'obs' in col.lower(): # 'obs' for OBS_VALUE
+            if 'value' in col.lower() or 'obs' in col.lower():
                 value_col_name = col
                 break
         if not value_col_name:
-            if len(df.columns) >= 5: # Common position for value in ONS
+            if len(df.columns) >= 5:
                 value_col_name = df.columns[4]
             else:
                 st.warning(f"Could not identify value column in ONS data: {df.columns.tolist()}")
