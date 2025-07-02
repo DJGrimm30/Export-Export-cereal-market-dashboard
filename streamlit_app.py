@@ -192,7 +192,6 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
                     df_processed = df_processed[df_processed[col_filter_name].astype(str).str.strip() == str(filter_value).strip()]
                 else:
                     st.warning(f"Filter column '{col_filter_name}' not found in DataFrame for filtering '{filepath}'. Available columns: {df_processed.columns.tolist()}")
- fb07a36fd114576f1c1548d03d08a5e817d2a0df
             # If filtering results in empty dataframe, return empty
             if df_processed.empty:
                 st.info(f"No data remaining in '{filepath}' after applying filters: {specific_filters}")
