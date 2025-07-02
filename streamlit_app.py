@@ -195,7 +195,7 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
             # If filtering results in empty dataframe, return empty
             if df_processed.empty:
                 st.info(f"No data remaining in '{filepath}' after applying filters: {specific_filters}")
-               return pd.DataFrame()
+               return pd.DataFrame() HEAD
             id_vars_for_melt = [col for col in df.columns if col not in time_period_cols_to_melt and col != value_col_in_raw_data]
             df_melted = df.melt(id_vars=id_vars_for_melt, value_vars=time_period_cols_to_melt, var_name='date_raw', value_name='value_raw')
 
