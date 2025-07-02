@@ -36,7 +36,7 @@ def load_eurostat_retail_sales_specific(filepath, specific_filters=None):
         st.error(f"Error: Data file '{filepath}' not found. Please ensure it's in the same folder as the app.")
         return pd.DataFrame()
     try:
-        df = pd.read_csv(filepath) HEAD
+        df = pd.read_csv(filepath)
         # --- NEW: Detect if CSV is already in 'long' format (has TIME_PERIOD and OBS_VALUE) ---
         if 'TIME_PERIOD' in df.columns and 'OBS_VALUE' in df.columns:
             # st.write(f"Assuming {filepath} is already in long format.") # Debug print removed
