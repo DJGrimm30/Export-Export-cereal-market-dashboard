@@ -27,92 +27,16 @@ st.markdown("---")
 
 # --- NEW: Specific loader for eurostat_retail_sales.csv (assumed to be flat) ---
 @st.cache_data
-def load_eurostat_retail_sales_specific(filepath, specific_filters=None):
+def load_eurostat_retail_sales_specific(filepath):
     """
     Loads eurostat_retail_sales.csv which is assumed to be already flat with 'date', 'geo', 'value' columns.
-    Applies filters if necessary.
     """
     if not os.path.exists(filepath):
         st.error(f"Error: Data file '{filepath}' not found. Please ensure it's in the same folder as the app.")
         return pd.DataFrame()
     try:
         df = pd.read_csv(filepath)
-        # --- NEW: Detect if CSV is already in 'long' format (has TIME_PERIOD and OBS_VALUE) ---
-        if 'TIME_PERIOD' in df.columns and 'OBS_VALUE' in df.columns:
-            # st.write(f"Assuming {filepath} is already in long format.") # Debug print removed
-            df_processed = df.copy()
-            
-            # Rename columns to standard names
-            df_processed = df_processed.rename(columns={
-                'TIME_PERIOD': 'date',
-                'OBS_VALUE': 'value',
-                'GEO': 'geo' # Standardize GEO if present
-            })
-
-            # Clean 'value' column
-            df_processed['value'] = pd.to_numeric(
-                df_processed['value'].astype(str).str.replace(r'[a-zA-Z\s:]', '', regex=True), 
-                errors='coerce'
-            )
-            df_processed.dropna(subset=['value'], inplace=True)
-
-            # Convert 'date' to datetime objects, handling different formats
-            def parse_eurostat_date(date_str):
-                if pd.isna(date_str): return pd.NaT
-                date_str = str(date_str).strip()
-                if re.match(r'^\d{4}$', date_str): return pd.to_datetime(date_str, format='%Y')
-                elif re.match(r'^\d{4}Q[1-4]$', date_str): return pd.to_datetime(f'{date_str[:4]}-{int(date_str[5])*3-2}-01')
-                elif re.match(r'^\d{4}M\d{2}$', date_str): return pd.to_datetime(date_str, format='%YM%m')
-                return pd.NaT
-
-            df_processed['date'] = df_processed['date'].apply(parse_eurostat_date)
-            df_processed.dropna(subset=['date'], inplace=True)
-
-            # Apply specific filters (e.g., NACE_R2='G47', COFOG_L2='CP01')
-            if specific_filters:
-                for col_filter_name, filter_value in specific_filters.items():
-                    if col_filter_name in df_processed.columns:
-                        df_processed = df_processed[df_processed[col_filter_name].astype(str).str.strip() == str(filter_value).strip()]
-                    else:
-                        st.warning(f"Filter column '{col_filter_name}' not found in DataFrame for filtering '{filepath}'. Available columns: {df_processed.columns.tolist()}")
-            
-            # Final column selection
-            required_final_cols = ['date', 'geo', 'value']
-            # Ensure 'geo' is present before selecting
-            if 'geo' not in df_processed.columns:
-                st.warning(f"Final 'geo' column missing after processing {filepath}. Defaulting to 'Unknown'.")
-                df_processed['geo'] = 'Unknown' 
-            if 'value' not in df_processed.columns:
-                st.warning(f"Final 'value' column missing after processing {filepath}. Defaulting to 0.")
-                df_processed['value'] = 0 
-
-            return df_processed[required_final_cols].copy()
-
-        # --- Original Robust Parsing (for complex Eurostat downloads that need melting) ---
-        else:
-            # st.write(f"Assuming {filepath} needs melting.") # Debug print removed
-            raw_first_col_header = df.columns[0]
-            
-            if '\\' in raw_first_col_header:
-                dimension_names_str = raw_first_col_header.split('\\')[0]
-                time_period_header_name_raw = raw_first_col_header.split('\\')[1].strip()
-            else:
-                dimension_names_str = raw_first_col_header
-                time_period_header_name_raw = None 
-            
-            dimension_names = [d.strip() for d in dimension_names_str.split(',')]
-
-            temp_dim_split_col = '__temp_dim_split__'
-            df[temp_dim_split_col] = df[raw_first_col_header]
-
-            for i, dim_name in enumerate(dimension_names):
-                df[dim_name] = df[temp_dim_split_col].apply(lambda x: x.split(',')[i].strip() if len(x.split(',')) > i else None)
-            
-            df = df.drop(columns=[raw_first_col_header, temp_dim_split_col])
-
-            time_period_cols_to_melt = [col for col in df.columns if re.match(r'^\d{4}(Q[1-4]|M\d{2})?$', col.strip())]
-            value_col_in_raw_data = 'OBS_VALUE' # Still assume OBS_VALUE for melting case
-            
+        
         # Standardize column names if they are slightly different
         if 'Date' in df.columns: df = df.rename(columns={'Date': 'date'})
         if 'Geo' in df.columns: df = df.rename(columns={'Geo': 'geo'})
@@ -122,17 +46,9 @@ def load_eurostat_retail_sales_specific(filepath, specific_filters=None):
         if 'date' not in df.columns or 'geo' not in df.columns or 'value' not in df.columns:
             st.warning(f"Retail sales CSV '{filepath}' missing expected columns (date, geo, value). Found: {df.columns.tolist()}")
             return pd.DataFrame()
-        
+            
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
         df.dropna(subset=['date'], inplace=True)
-        
-        # Apply specific filters if provided (e.g., NACE_R2, INDIC_BT if they exist in this flat file)
-        if specific_filters:
-            for col_filter_name, filter_value in specific_filters.items():
-                if col_filter_name in df.columns:
-                    df = df[df[col_filter_name].astype(str).str.strip() == str(filter_value).strip()]
-                else:
-                    st.warning(f"Filter column '{col_filter_name}' not found in flat retail sales DataFrame for filtering '{filepath}'. Skipping filter.")
         
         return df[['date', 'geo', 'value']].copy()
 
@@ -152,18 +68,33 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
     try:
         df = pd.read_csv(filepath)
         
-        # Ensure TIME_PERIOD and OBS_VALUE are present
-        if 'TIME_PERIOD' not in df.columns or 'OBS_VALUE' not in df.columns:
-            st.warning(f"Warning: Expected 'TIME_PERIOD' or 'OBS_VALUE' in '{filepath}'. Found: {df.columns.tolist()}")
+        # --- NEW: Robustly identify TIME_PERIOD and OBS_VALUE ---
+        time_period_col = None
+        obs_value_col = None
+
+        # Look for TIME_PERIOD column (case-insensitive)
+        for col in df.columns:
+            if 'TIME_PERIOD' in col.upper():
+                time_period_col = col
+                break
+        
+        # Look for OBS_VALUE column (case-insensitive)
+        for col in df.columns:
+            if 'OBS_VALUE' in col.upper():
+                obs_value_col = col
+                break
+
+        if not time_period_col or not obs_value_col:
+            st.warning(f"Warning: Expected 'TIME_PERIOD' and 'OBS_VALUE' in '{filepath}'. Found: {df.columns.tolist()}")
             return pd.DataFrame()
         
         df_processed = df.copy()
         
         # Rename columns to standard names
         df_processed = df_processed.rename(columns={
-            'TIME_PERIOD': 'date',
-            'OBS_VALUE': 'value',
-            'GEO': 'geo' # Standardize GEO if present
+            time_period_col: 'date',
+            obs_value_col: 'value',
+            'GEO': 'geo' # Standardize GEO if present (Eurostat uses 'GEO')
         })
 
         # Clean 'value' column
@@ -188,55 +119,22 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
         # Apply specific filters (e.g., COFOG_L2='CP01', IND_TYPE='I_IBSPS', AGE='TOTAL', SEX='T')
         if specific_filters:
             for col_filter_name, filter_value in specific_filters.items():
-                if col_filter_name in df_processed.columns:
-                    df_processed = df_processed[df_processed[col_filter_name].astype(str).str.strip() == str(filter_value).strip()]
+                # Check for the filter column in the DataFrame (case-insensitive)
+                found_filter_col = None
+                for col in df_processed.columns:
+                    if col_filter_name.upper() == col.upper(): # Match case-insensitively
+                        found_filter_col = col
+                        break
+
+                if found_filter_col:
+                    df_processed = df_processed[df_processed[found_filter_col].astype(str).str.strip() == str(filter_value).strip()]
                 else:
                     st.warning(f"Filter column '{col_filter_name}' not found in DataFrame for filtering '{filepath}'. Available columns: {df_processed.columns.tolist()}")
+            
             # If filtering results in empty dataframe, return empty
             if df_processed.empty:
                 st.info(f"No data remaining in '{filepath}' after applying filters: {specific_filters}")
-               return pd.DataFrame()
-            id_vars_for_melt = [col for col in df.columns if col not in time_period_cols_to_melt and col != value_col_in_raw_data]
-            df_melted = df.melt(id_vars=id_vars_for_melt, value_vars=time_period_cols_to_melt, var_name='date_raw', value_name='value_raw')
-
-            df_melted['value'] = pd.to_numeric(
-                df_melted['value_raw'].astype(str).str.replace(r'[a-zA-Z\s:]', '', regex=True), 
-                errors='coerce'
-            )
-            df_melted.dropna(subset=['value'], inplace=True)
-
-            def parse_eurostat_date(date_str):
-                if pd.isna(date_str): return pd.NaT
-                date_str = str(date_str).strip()
-                if re.match(r'^\d{4}$', date_str): return pd.to_datetime(date_str, format='%Y')
-                elif re.match(r'^\d{4}Q[1-4]$', date_str): return pd.to_datetime(f'{date_str[:4]}-{int(date_str[5])*3-2}-01')
-                elif re.match(r'^\d{4}M\d{2}$', date_str): return pd.to_datetime(date_str, format='%YM%m')
-                return pd.NaT
-
-            df_melted['date'] = df_melted['date_raw'].apply(parse_eurostat_date)
-            df_melted.dropna(subset=['date'], inplace=True)
-
-            if 'GEO' in df_melted.columns: df_melted = df_melted.rename(columns={'GEO': 'geo'})
-            if 'UNIT' in df_melted.columns: df_melted = df_melted.rename(columns={'UNIT': 'unit'})
-            if 'FREQ' in df_melted.columns: df_melted = df_melted.rename(columns={'FREQ': 'freq'})
-            if 'COFOG_L2' in df_melted.columns: df_melted = df_melted.rename(columns={'COFOG_L2': 'cofog_l2'})
-            if 'IND_TYPE' in df_melted.columns: df_melted = df_melted.rename(columns={'IND_TYPE': 'ind_type'})
-            if 'AGE' in df_melted.columns: df_melted = df_melted.rename(columns={'AGE': 'age'})
-            if 'SEX' in df_melted.columns: df_melted = df_melted.rename(columns={'SEX': 'sex'})
-
-            if specific_filters:
-                for col_filter_name, filter_value in specific_filters.items():
-                    if col_filter_name in df_melted.columns:
-                        df_melted = df_melted[df_melted[col_filter_name].astype(str).str.strip() == str(filter_value).strip()]
-                    else:
-                        st.warning(f"Filter column '{col_filter_name}' not found in DataFrame for filtering '{filepath}'. Available columns: {df_melted.columns.tolist()}")
-
-            required_final_cols = ['date', 'geo', 'value']
-            if 'geo' not in df_melted.columns: st.warning(f"Final 'geo' column missing after processing {filepath}. Defaulting to 'Unknown'."); df_melted['geo'] = 'Unknown' 
-            if 'value' not in df_melted.columns: st.warning(f"Final 'value' column missing after processing {filepath}. Defaulting to 0."); df_melted['value'] = 0 
-
-            final_df = df_melted[required_final_cols].copy()
-            return final_df
+                return pd.DataFrame()
 
         # Final column selection
         required_final_cols = ['date', 'geo', 'value']
@@ -248,7 +146,6 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
             df_processed['value'] = 0 
 
         return df_processed[required_final_cols].copy()
-fb07a36fd114576f1c1548d03d08a5e817d2a0df
 
     except Exception as e:
         st.error(f"Failed to load or parse Eurostat data from '{filepath}': {e}")
@@ -359,7 +256,7 @@ def calculate_per_capita(value_df, population_df, value_col='value', pop_col='va
 # --- Load Data at App Start ---
 df_openfoodfacts = load_openfoodfacts_data()
 # --- UPDATED: Use specific loader for retail sales, generic for others ---
-df_eurostat_retail = load_eurostat_retail_sales_specific(EUROSTAT_RETAIL_CSV, specific_filters={'NACE_R2': 'G47', 'INDIC_BT': 'VOL_IDX_RT'})
+df_eurostat_retail = load_eurostat_retail_sales_specific(EUROSTAT_RETAIL_CSV) # Removed specific_filters from call
 df_eurostat_consumption = load_eurostat_long_format_data(EUROSTAT_CONSUMPTION_CSV, specific_filters={'COFOG_L2': 'CP01', 'UNIT': 'PC_CP'})
 df_eurostat_ecommerce = load_eurostat_long_format_data(EUROSTAT_ECOMMERCE_CSV, specific_filters={'IND_TYPE': 'I_IBSPS', 'UNIT': 'PC_IND'})
 df_eurostat_population = load_eurostat_long_format_data(EUROSTAT_POPULATION_CSV, specific_filters={'AGE': 'TOTAL', 'SEX': 'T'})
@@ -558,7 +455,7 @@ with tab3:
         )
 
         if selected_brands:
-            filtered_by_brands = filtered_df_off[filtered_df_off['Brand'].isin(selected_brands)]
+            filtered_by_brands = filtered_df_off[filtered_by_brands['Brand'].isin(selected_brands)]
             st.dataframe(filtered_by_brands[['Product', 'Brand', 'Quantity', 'Store', 'Country', 'Search_Term', 'URL']], use_container_width=True)
         else:
             st.info("Select one or more brands to view their products.")
