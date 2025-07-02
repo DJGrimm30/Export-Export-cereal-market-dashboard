@@ -25,7 +25,7 @@ st.markdown("---")
 
 # --- Data Loading Functions ---
 
-# --- NEW: Specific loader for eurostat_retail_sales.csv (assumed to be flat) ---
+# --- Specific loader for eurostat_retail_sales.csv (assumed to be flat) ---
 @st.cache_data
 def load_eurostat_retail_sales_specific(filepath):
     """
@@ -68,21 +68,18 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
     try:
         df = pd.read_csv(filepath)
         
+        # --- NEW: Standardize all column names to lowercase for easier access ---
+        df.columns = [col.lower().strip() for col in df.columns]
+
+        # --- NEW: Robustly identify TIME_PERIOD and OBS_VALUE (now that columns are lowercase) ---
         time_period_col = None
         obs_value_col = None
 
-        for col in df.columns:
-            if 'TIME_PERIOD' in col.upper():
-                time_period_col = col
-                break
-        
-        for col in df.columns:
-            if 'OBS_VALUE' in col.upper():
-                obs_value_col = col
-                break
+        if 'time_period' in df.columns: time_period_col = 'time_period'
+        if 'obs_value' in df.columns: obs_value_col = 'obs_value'
 
         if not time_period_col or not obs_value_col:
-            st.warning(f"Warning: Expected 'TIME_PERIOD' and 'OBS_VALUE' in '{filepath}'. Found: {df.columns.tolist()}")
+            st.warning(f"Warning: Expected 'time_period' and 'obs_value' in '{filepath}'. Found: {df.columns.tolist()}")
             return pd.DataFrame()
         
         df_processed = df.copy()
@@ -91,21 +88,8 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
         df_processed = df_processed.rename(columns={
             time_period_col: 'date',
             obs_value_col: 'value',
-            'GEO': 'geo' # Standardize GEO if present (Eurostat uses 'GEO')
+            'geo': 'geo' # 'geo' should already be lowercase
         })
-
-        # --- NEW: Standardize other common Eurostat dimension columns (case-insensitive) ---
-        # Iterate through all columns and rename if they match expected dimension names
-        for original_col in df_processed.columns.tolist():
-            if original_col.upper() == 'UNIT': df_processed = df_processed.rename(columns={original_col: 'unit'})
-            elif original_col.upper() == 'FREQ': df_processed = df_processed.rename(columns={original_col: 'freq'})
-            elif original_col.upper() == 'COFOG_L2': df_processed = df_processed.rename(columns={original_col: 'cofog_l2'})
-            elif original_col.upper() == 'IND_TYPE': df_processed = df_processed.rename(columns={original_col: 'ind_type'})
-            elif original_col.upper() == 'AGE': df_processed = df_processed.rename(columns={original_col: 'age'})
-            elif original_col.upper() == 'SEX': df_processed = df_processed.rename(columns={original_col: 'sex'})
-            elif original_col.upper() == 'NACE_R2': df_processed = df_processed.rename(columns={original_col: 'nace_r2'}) # For retail data if it comes in long format
-            elif original_col.upper() == 'INDIC_BT': df_processed = df_processed.rename(columns={original_col: 'indic_bt'}) # For retail data if it comes in long format
-
 
         # Clean 'value' column
         df_processed['value'] = pd.to_numeric(
@@ -126,22 +110,14 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
         df_processed['date'] = df_processed['date'].apply(parse_eurostat_date)
         df_processed.dropna(subset=['date'], inplace=True)
 
-        # Apply specific filters (e.g., COFOG_L2='CP01', IND_TYPE='I_IBSPS', AGE='TOTAL', SEX='T')
+        # Apply specific filters (e.g., cofog_l2='CP01', ind_type='I_IBSPS', age='TOTAL', sex='T')
         if specific_filters:
             for col_filter_name, filter_value in specific_filters.items():
-                # Check for the filter column in the DataFrame (case-insensitive)
-                found_filter_col = None
-                for col in df_processed.columns:
-                    if col_filter_name.upper() == col.upper(): # Match case-insensitively
-                        found_filter_col = col
-                        break
-
-                if found_filter_col:
-                    df_processed = df_processed[df_processed[found_filter_col].astype(str).str.strip() == str(filter_value).strip()]
+                if col_filter_name.lower() in df_processed.columns: # Check lowercase column name
+                    df_processed = df_processed[df_processed[col_filter_name.lower()].astype(str).str.strip() == str(filter_value).strip()]
                 else:
                     st.warning(f"Filter column '{col_filter_name}' not found in DataFrame for filtering '{filepath}'. Available columns: {df_processed.columns.tolist()}")
             
-            # If filtering results in empty dataframe, return empty
             if df_processed.empty:
                 st.info(f"No data remaining in '{filepath}' after applying filters: {specific_filters}")
                 return pd.DataFrame()
@@ -475,205 +451,4 @@ with tab3:
 
 
 with tab4: # Consumer Insights tab
-    st.header("🧠 Consumer Insights & Macro Trends")
-    st.write("Explore broader economic and demographic trends influencing consumer behavior in Europe and the UK.")
-
-    insight_type = st.selectbox(
-        "Select Consumer Insight Type",
-        options=["ONS Retail Sales (UK)", "Household Consumption (Eurostat)", "E-commerce Penetration (Eurostat)", "Population Trends (Eurostat)"],
-        key="insight_type_select"
-    )
-
-    col_insight1, col_insight2 = st.columns(2)
-
-    # --- ONS Retail Sales ---
-    if insight_type == "ONS Retail Sales (UK)":
-        if not df_ons_retail_sales.empty:
-            ons_yoy_growth = calculate_yoy_growth(df_ons_retail_sales, geo_col='geo')
-            if not ons_yoy_growth.empty:
-                st.subheader("UK Retail Sales Index (ONS) - YoY Growth")
-                fig_ons_yoy = px.line(
-                    ons_yoy_growth,
-                    x="date",
-                    y="YoY_Growth",
-                    title="UK Retail Sales Index YoY Growth (ONS)",
-                    labels={"YoY_Growth": "YoY Growth (%)", "date": "Date"},
-                    hover_data={"YoY_Growth": ":.2f%"},
-                    markers=True
-                )
-                col_insight2.plotly_chart(fig_ons_yoy, use_container_width=True)
-            else:
-                col_insight2.info(f"Not enough data to calculate YoY growth for ONS Retail Sales.")
-
-            st.subheader("UK Retail Sales Index (ONS)")
-            fig_ons_retail = px.line(
-                df_ons_retail_sales,
-                x="date",
-                y="value",
-                title="UK Retail Sales Index (ONS)",
-                labels={"value": "Retail Sales Index", "date": "Date"},
-                hover_data={"value": ":.2f"},
-                markers=True
-            )
-            col_insight2.plotly_chart(fig_ons_retail, use_container_width=True)
-        else:
-            col_insight2.info(f"ONS Retail Sales data not available. Please ensure '{ONS_RETAIL_SALES_CSV}' is loaded.")
-
-    # --- Household Consumption Expenditure (Eurostat) ---
-    elif insight_type == "Household Consumption (Eurostat)":
-        if not df_eurostat_consumption.empty:
-            countries_consumption = sorted(df_eurostat_consumption['geo'].dropna().unique().tolist())
-            selected_country_consumption = col_insight1.selectbox(
-                "Select Country for Consumption Trends",
-                options=countries_consumption,
-                key="consumption_country_select"
-            )
-            filtered_consumption = df_eurostat_consumption[
-                (df_eurostat_consumption['geo'] == selected_country_consumption)
-            ].sort_values(by='date')
-            
-            if not filtered_consumption.empty:
-                consumption_yoy_growth = calculate_yoy_growth(filtered_consumption, geo_col='geo')
-                if not consumption_yoy_growth.empty:
-                    st.subheader(f"Household Consumption on Food YoY Growth in {selected_country_consumption}")
-                    fig_consumption_yoy = px.line(
-                        consumption_yoy_growth,
-                        x="date",
-                        y="YoY_Growth",
-                        title=f"Household Consumption on Food YoY Growth in {selected_country_consumption}",
-                        labels={"YoY_Growth": "YoY Growth (%)", "date": "Year"},
-                        hover_data={"YoY_Growth": ":.2f%"},
-                        markers=True
-                    )
-                    col_insight2.plotly_chart(fig_consumption_yoy, use_container_width=True)
-                else:
-                    col_insight2.info(f"Not enough data to calculate YoY growth for consumption in {selected_country_consumption}.")
-
-                if not df_eurostat_population.empty:
-                    consumption_per_capita = calculate_per_capita(
-                        filtered_consumption, df_eurostat_population,
-                        value_col='value', pop_col='value', date_col='date', geo_col='geo'
-                    )
-                    if not consumption_per_capita.empty:
-                        st.subheader(f"Household Food Consumption Per Capita in {selected_country_consumption}")
-                        fig_consumption_pc = px.line(
-                            consumption_per_capita,
-                            x="date",
-                            y="Per_Capita_Value",
-                            title=f"Household Food Consumption Per Capita in {selected_country_consumption}",
-                            labels={"Per_Capita_Value": "Consumption Per Capita", "date": "Year"},
-                            hover_data={"Per_Capita_Value": ":.2f"},
-                            markers=True
-                        )
-                        col_insight2.plotly_chart(fig_consumption_pc, use_container_width=True)
-                    else:
-                        col_insight2.info(f"Not enough population data for per capita consumption in {selected_country_consumption}.")
-
-
-                st.subheader(f"Household Consumption on Food in {selected_country_consumption}")
-                fig_consumption = px.line(
-                    filtered_consumption,
-                    x="date",
-                    y="value",
-                    title=f"Household Consumption on Food in {selected_country_consumption}",
-                    labels={"value": "Consumption Expenditure (%)", "date": "Year"},
-                    hover_data={"value": ":.2f"},
-                    markers=True
-                )
-                col_insight2.plotly_chart(fig_consumption, use_container_width=True)
-            else:
-                col_insight2.info(f"No consumption data for {selected_country_consumption}. Check data in '{EUROSTAT_CONSUMPTION_CSV}'.")
-        else:
-            col_insight2.info(f"Household consumption data not available. Please ensure '{EUROSTAT_CONSUMPTION_CSV}' is loaded.")
-
-    # --- E-commerce Penetration (Eurostat) ---
-    elif insight_type == "E-commerce Penetration (Eurostat)":
-        if not df_eurostat_ecommerce.empty:
-            countries_ecommerce = sorted(df_eurostat_ecommerce['geo'].dropna().unique().tolist())
-            selected_country_ecommerce = col_insight1.selectbox(
-                "Select Country for E-commerce Trends",
-                options=countries_ecommerce,
-                key="ecommerce_country_select"
-            )
-            filtered_ecommerce = df_eurostat_ecommerce[
-                (df_eurostat_ecommerce['geo'] == selected_country_ecommerce)
-            ].sort_values(by='date')
-
-            if not filtered_ecommerce.empty:
-                ecommerce_yoy_growth = calculate_yoy_growth(filtered_ecommerce, geo_col='geo')
-                if not ecommerce_yoy_growth.empty:
-                    st.subheader(f"Individuals Buying Online YoY Growth in {selected_country_ecommerce}")
-                    fig_ecommerce_yoy = px.line(
-                        ecommerce_yoy_growth,
-                        x="date",
-                        y="YoY_Growth",
-                        title=f"Individuals Buying Online YoY Growth in {selected_country_ecommerce}",
-                        labels={"YoY_Growth": "YoY Growth (%)", "date": "Year"},
-                        hover_data={"YoY_Growth": ":.2f%"},
-                        markers=True
-                    )
-                    col_insight2.plotly_chart(fig_ecommerce_yoy, use_container_width=True)
-                else:
-                    col_insight2.info(f"Not enough data to calculate YoY growth for e-commerce in {selected_country_ecommerce}.")
-
-                st.subheader(f"Individuals Buying Online in {selected_country_ecommerce}")
-                fig_ecommerce = px.line(
-                    filtered_ecommerce,
-                    x="date",
-                    y="value",
-                    title=f"Individuals Buying Online in {selected_country_ecommerce}",
-                    labels={"value": "Percentage of Individuals (%)", "date": "Year"},
-                    hover_data={"value": ":.2f"},
-                    markers=True
-                )
-                col_insight2.plotly_chart(fig_ecommerce, use_container_width=True)
-            else:
-                col_insight2.info(f"No e-commerce data for {selected_country_ecommerce}. Check data in '{EUROSTAT_ECOMMERCE_CSV}'.")
-        else:
-            col_insight2.info(f"E-commerce data not available. Please ensure '{EUROSTAT_ECOMMERCE_CSV}' is loaded.")
-
-    # --- Population Trends (Eurostat) ---
-    elif insight_type == "Population Trends (Eurostat)":
-        if not df_eurostat_population.empty:
-            countries_population = sorted(df_eurostat_population['geo'].dropna().unique().tolist())
-            selected_country_population = col_insight1.selectbox(
-                "Select Country for Population Trends",
-                options=countries_population,
-                key="population_country_select"
-            )
-            filtered_population = df_eurostat_population[
-                (df_eurostat_population['geo'] == selected_country_population)
-            ].sort_values(by='date')
-
-            if not filtered_population.empty:
-                population_yoy_growth = calculate_yoy_growth(filtered_population, geo_col='geo')
-                if not population_yoy_growth.empty:
-                    st.subheader(f"Total Population YoY Growth in {selected_country_population}")
-                    fig_population_yoy = px.line(
-                        population_yoy_growth,
-                        x="date",
-                        y="YoY_Growth",
-                        title=f"Total Population YoY Growth in {selected_country_population}",
-                        labels={"YoY_Growth": "YoY Growth (%)", "date": "Year"},
-                        hover_data={"YoY_Growth": ":.2f%"},
-                        markers=True
-                    )
-                    col_insight2.plotly_chart(fig_population_yoy, use_container_width=True)
-                else:
-                    col_insight2.info(f"Not enough data to calculate YoY growth for population in {selected_country_population}.")
-
-                st.subheader(f"Total Population in {selected_country_population}")
-                fig_population = px.line(
-                    filtered_population,
-                    x="date",
-                    y="value",
-                    title=f"Total Population in {selected_country_population}",
-                    labels={"value": "Population", "date": "Year"},
-                    hover_data={"value": ":.0f"},
-                    markers=True
-                )
-                col_insight2.plotly_chart(fig_population, use_container_width=True)
-            else:
-                col_insight2.info(f"No population data for {selected_country_population}. Check data in '{EUROSTAT_POPULATION_CSV}'.")
-        else:
-            col_insight2.info(f"Population data not available. Please ensure '{EUROSTAT_POPULATION_CSV}' is loaded.")
+    st.header("🧠 Consumer Insights & Macro Trend
