@@ -36,9 +36,7 @@ def load_eurostat_retail_sales_specific(filepath, specific_filters=None):
         st.error(f"Error: Data file '{filepath}' not found. Please ensure it's in the same folder as the app.")
         return pd.DataFrame()
     try:
-        df = pd.read_csv(filepath)
-        
-<<<<<<< HEAD
+        df = pd.read_csv(filepath) HEAD
         # --- NEW: Detect if CSV is already in 'long' format (has TIME_PERIOD and OBS_VALUE) ---
         if 'TIME_PERIOD' in df.columns and 'OBS_VALUE' in df.columns:
             # st.write(f"Assuming {filepath} is already in long format.") # Debug print removed
@@ -114,7 +112,7 @@ def load_eurostat_retail_sales_specific(filepath, specific_filters=None):
 
             time_period_cols_to_melt = [col for col in df.columns if re.match(r'^\d{4}(Q[1-4]|M\d{2})?$', col.strip())]
             value_col_in_raw_data = 'OBS_VALUE' # Still assume OBS_VALUE for melting case
-=======
+            
         # Standardize column names if they are slightly different
         if 'Date' in df.columns: df = df.rename(columns={'Date': 'date'})
         if 'Geo' in df.columns: df = df.rename(columns={'Geo': 'geo'})
@@ -240,7 +238,7 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
 
             final_df = df_melted[required_final_cols].copy()
             return final_df
-=======
+
         # Final column selection
         required_final_cols = ['date', 'geo', 'value']
         if 'geo' not in df_processed.columns:
@@ -251,7 +249,7 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
             df_processed['value'] = 0 
 
         return df_processed[required_final_cols].copy()
->>>>>>> fb07a36fd114576f1c1548d03d08a5e817d2a0df
+fb07a36fd114576f1c1548d03d08a5e817d2a0df
 
     except Exception as e:
         st.error(f"Failed to load or parse Eurostat data from '{filepath}': {e}")
