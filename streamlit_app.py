@@ -28,99 +28,130 @@ st.markdown("---")
 def load_eurostat_data(filepath, geo_col='geo', value_col='value', date_col='date', specific_filters=None):
     """
     Generic function to load and preprocess Eurostat CSVs.
-    Handles complex first column headers common in Eurostat downloads by melting.
+    Handles different Eurostat download formats (complex header vs. already melted).
     """
-    st.write(f"Attempting to load: {filepath}") # Debug print
+    st.write(f"Attempting to load: {filepath}")
     if not os.path.exists(filepath):
         st.error(f"Error: Data file '{filepath}' not found. Please ensure it's in the same folder as the app.")
         return pd.DataFrame()
     try:
         df = pd.read_csv(filepath)
-        st.write(f"Raw columns for {filepath}: {df.columns.tolist()}") # Debug print
+        st.write(f"Raw columns for {filepath}: {df.columns.tolist()}")
         
-        raw_first_col_header = df.columns[0]
+        # --- NEW: Check if it's already a 'flat' CSV (like the simplified retail sales) ---
+        # If 'OBS_VALUE' and 'TIME_PERIOD' are NOT in the columns, assume it's already flat.
+        if 'OBS_VALUE' not in df.columns and 'TIME_PERIOD' not in df.columns:
+            st.write(f"Assuming {filepath} is already a flat CSV.")
+            # Assume it already has 'date', 'geo', 'value' or similar
+            # Standardize column names if needed
+            if 'Date' in df.columns: df = df.rename(columns={'Date': 'date'})
+            if 'Geo' in df.columns: df = df.rename(columns={'Geo': 'geo'})
+            if 'Value' in df.columns: df = df.rename(columns={'Value': 'value'})
+            
+            # Ensure final required columns exist
+            if date_col not in df.columns or geo_col not in df.columns or value_col not in df.columns:
+                st.warning(f"Flat CSV '{filepath}' missing expected columns. Found: {df.columns.tolist()}")
+                return pd.DataFrame()
+            
+            df_processed = df[[date_col, geo_col, value_col]].copy()
+            df_processed['date'] = pd.to_datetime(df_processed['date'], errors='coerce')
+            df_processed.dropna(subset=['date'], inplace=True)
+            
+            # Apply filters if any (e.g., for NACE_R2, INDIC_BT if they somehow exist in flat file)
+            if specific_filters:
+                for col_filter_name, filter_value in specific_filters.items():
+                    if col_filter_name in df_processed.columns:
+                        df_processed = df_processed[df_processed[col_filter_name].astype(str).str.strip() == str(filter_value).strip()]
+                    else:
+                        st.warning(f"Filter column '{col_filter_name}' not found in flat DataFrame for filtering '{filepath}'. Skipping filter.")
+            
+            st.write(f"Final Flat DataFrame shape for {filepath}: {df_processed.shape}")
+            st.write(f"Final Flat DataFrame head for {filepath}:\n{df_processed.head()}")
+            return df_processed
         
-        if '\\' in raw_first_col_header:
-            dimension_names_str = raw_first_col_header.split('\\')[0]
-            time_period_header_name_raw = raw_first_col_header.split('\\')[1].strip()
+        # --- Original Robust Parsing (for complex Eurostat downloads with OBS_VALUE/TIME_PERIOD) ---
         else:
-            dimension_names_str = raw_first_col_header
-            time_period_header_name_raw = None 
-        
-        dimension_names = [d.strip() for d in dimension_names_str.split(',')]
-        st.write(f"Detected dimension names from first header: {dimension_names}") # Debug print
+            st.write(f"Assuming {filepath} is a complex Eurostat CSV, processing with melt.")
+            raw_first_col_header = df.columns[0]
+            
+            if '\\' in raw_first_col_header:
+                dimension_names_str = raw_first_col_header.split('\\')[0]
+                time_period_header_name_raw = raw_first_col_header.split('\\')[1].strip()
+            else:
+                dimension_names_str = raw_first_col_header
+                time_period_header_name_raw = None 
+            
+            dimension_names = [d.strip() for d in dimension_names_str.split(',')]
+            st.write(f"Detected dimension names from first header: {dimension_names}")
 
-        temp_dim_split_col = '__temp_dim_split__'
-        df[temp_dim_split_col] = df[raw_first_col_header]
+            temp_dim_split_col = '__temp_dim_split__'
+            df[temp_dim_split_col] = df[raw_first_col_header]
 
-        for i, dim_name in enumerate(dimension_names):
-            df[dim_name] = df[temp_dim_split_col].apply(lambda x: x.split(',')[i].strip() if len(x.split(',')) > i else None)
-        
-        df = df.drop(columns=[raw_first_col_header, temp_dim_split_col])
-        st.write(f"Columns after splitting first header: {df.columns.tolist()}") # Debug print
+            for i, dim_name in enumerate(dimension_names):
+                df[dim_name] = df[temp_dim_split_col].apply(lambda x: x.split(',')[i].strip() if len(x.split(',')) > i else None)
+            
+            df = df.drop(columns=[raw_first_col_header, temp_dim_split_col])
+            st.write(f"Columns after splitting first header: {df.columns.tolist()}")
 
-        time_period_cols_to_melt = [col for col in df.columns if re.match(r'^\d{4}(Q[1-4]|M\d{2})?$', col.strip())]
-        
-        value_col_in_raw_data = 'OBS_VALUE' # Standard Eurostat value column
-        
-        if not time_period_cols_to_melt or value_col_in_raw_data not in df.columns:
-            st.warning(f"Warning: Could not identify time periods or OBS_VALUE column in {filepath}. Columns: {df.columns.tolist()}")
-            return pd.DataFrame()
+            # The actual time period columns are those that match year/quarter/month patterns
+            time_period_cols_to_melt = [col for col in df.columns if re.match(r'^\d{4}(Q[1-4]|M\d{2})?$', col.strip())]
+            
+            value_col_in_raw_data = 'OBS_VALUE' 
+            
+            if not time_period_cols_to_melt or value_col_in_raw_data not in df.columns:
+                st.warning(f"Warning: Could not identify time periods or OBS_VALUE column in {filepath}. Columns: {df.columns.tolist()}")
+                return pd.DataFrame()
 
-        id_vars_for_melt = [col for col in df.columns if col not in time_period_cols_to_melt and col != value_col_in_raw_data]
-        
-        df_melted = df.melt(id_vars=id_vars_for_melt, value_vars=time_period_cols_to_melt, var_name='date_raw', value_name='value_raw')
+            id_vars_for_melt = [col for col in df.columns if col not in time_period_cols_to_melt and col != value_col_in_raw_data]
+            
+            df_melted = df.melt(id_vars=id_vars_for_melt, value_vars=time_period_cols_to_melt, var_name='date_raw', value_name='value_raw')
 
-        df_melted['value'] = pd.to_numeric(
-            df_melted['value_raw'].astype(str).str.replace(r'[a-zA-Z\s:]', '', regex=True), 
-            errors='coerce'
-        )
-        df_melted.dropna(subset=['value'], inplace=True)
+            df_melted['value'] = pd.to_numeric(
+                df_melted['value_raw'].astype(str).str.replace(r'[a-zA-Z\s:]', '', regex=True), 
+                errors='coerce'
+            )
+            df_melted.dropna(subset=['value'], inplace=True)
 
-        def parse_eurostat_date(date_str):
-            if pd.isna(date_str): return pd.NaT
-            date_str = str(date_str).strip()
-            if re.match(r'^\d{4}$', date_str): return pd.to_datetime(date_str, format='%Y')
-            elif re.match(r'^\d{4}Q[1-4]$', date_str): return pd.to_datetime(f'{date_str[:4]}-{int(date_str[5])*3-2}-01')
-            elif re.match(r'^\d{4}M\d{2}$', date_str): return pd.to_datetime(date_str, format='%YM%m')
-            return pd.NaT
+            def parse_eurostat_date(date_str):
+                if pd.isna(date_str): return pd.NaT
+                date_str = str(date_str).strip()
+                if re.match(r'^\d{4}$', date_str): return pd.to_datetime(date_str, format='%Y')
+                elif re.match(r'^\d{4}Q[1-4]$', date_str): return pd.to_datetime(f'{date_str[:4]}-{int(date_str[5])*3-2}-01')
+                elif re.match(r'^\d{4}M\d{2}$', date_str): return pd.to_datetime(date_str, format='%YM%m')
+                return pd.NaT
 
-        df_melted['date'] = df_melted['date_raw'].apply(parse_eurostat_date)
-        df_melted.dropna(subset=['date'], inplace=True)
+            df_melted['date'] = df_melted['date_raw'].apply(parse_eurostat_date)
+            df_melted.dropna(subset=['date'], inplace=True)
 
-        if 'GEO' in df_melted.columns:
-            df_melted = df_melted.rename(columns={'GEO': 'geo'})
-        
-        # --- NEW: Standardize other common Eurostat dimension columns ---
-        if 'UNIT' in df_melted.columns:
-            df_melted = df_melted.rename(columns={'UNIT': 'unit'})
-        if 'FREQ' in df_melted.columns:
-            df_melted = df_melted.rename(columns={'FREQ': 'freq'})
+            if 'GEO' in df_melted.columns:
+                df_melted = df_melted.rename(columns={'GEO': 'geo'})
+            if 'UNIT' in df_melted.columns:
+                df_melted = df_melted.rename(columns={'UNIT': 'unit'})
+            if 'FREQ' in df_melted.columns:
+                df_melted = df_melted.rename(columns={'FREQ': 'freq'})
 
-        # Apply specific filters (e.g., NACE_R2='G47', COFOG_L2='CP01')
-        if specific_filters:
-            st.write(f"Applying filters for {filepath}: {specific_filters}") # Debug print
-            for col_filter_name, filter_value in specific_filters.items():
-                if col_filter_name in df_melted.columns:
-                    # Filter and also print how many rows remain
-                    initial_rows = len(df_melted)
-                    df_melted = df_melted[df_melted[col_filter_name].astype(str).str.strip() == str(filter_value).strip()]
-                    st.write(f"Filtered by {col_filter_name}='{filter_value}'. Rows: {initial_rows} -> {len(df_melted)}") # Debug print
-                else:
-                    st.warning(f"Filter column '{col_filter_name}' not found in DataFrame for filtering '{filepath}'. Available columns: {df_melted.columns.tolist()}")
+            if specific_filters:
+                st.write(f"Applying filters for {filepath}: {specific_filters}")
+                for col_filter_name, filter_value in specific_filters.items():
+                    if col_filter_name in df_melted.columns:
+                        initial_rows = len(df_melted)
+                        df_melted = df_melted[df_melted[col_filter_name].astype(str).str.strip() == str(filter_value).strip()]
+                        st.write(f"Filtered by {col_filter_name}='{filter_value}'. Rows: {initial_rows} -> {len(df_melted)}")
+                    else:
+                        st.warning(f"Filter column '{col_filter_name}' not found in DataFrame for filtering '{filepath}'. Available columns: {df_melted.columns.tolist()}")
 
-        required_final_cols = ['date', 'geo', 'value']
-        if 'geo' not in df_melted.columns:
-            st.warning(f"Final 'geo' column missing after processing {filepath}. Defaulting to 'Unknown'.")
-            df_melted['geo'] = 'Unknown' 
-        if 'value' not in df_melted.columns:
-            st.warning(f"Final 'value' column missing after processing {filepath}. Defaulting to 0.")
-            df_melted['value'] = 0 
+            required_final_cols = ['date', 'geo', 'value']
+            if 'geo' not in df_melted.columns:
+                st.warning(f"Final 'geo' column missing after processing {filepath}. Defaulting to 'Unknown'.")
+                df_melted['geo'] = 'Unknown' 
+            if 'value' not in df_melted.columns:
+                st.warning(f"Final 'value' column missing after processing {filepath}. Defaulting to 0.")
+                df_melted['value'] = 0 
 
-        final_df = df_melted[required_final_cols].copy()
-        st.write(f"Final DataFrame shape for {filepath}: {final_df.shape}") # Debug print
-        st.write(f"Final DataFrame head for {filepath}:\n{final_df.head()}") # Debug print
-        return final_df
+            final_df = df_melted[required_final_cols].copy()
+            st.write(f"Final DataFrame shape for {filepath}: {final_df.shape}")
+            st.write(f"Final DataFrame head for {filepath}:\n{final_df.head()}")
+            return final_df
 
     except Exception as e:
         st.error(f"Failed to load or parse Eurostat data from '{filepath}': {e}")
