@@ -451,4 +451,8 @@ with tab3:
 
 
 with tab4: # Consumer Insights tab
+
     st.header("🧠 Consumer Insights & Macro Trend
+
+    st.header("🧠 Consumer Insights & Macro Trend
+ 30a867479cbc5aaf2356f9812dfa6ffc94e28be1
