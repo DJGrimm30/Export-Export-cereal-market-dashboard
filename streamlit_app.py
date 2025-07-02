@@ -45,7 +45,8 @@ def load_eurostat_retail_sales_specific(filepath):
         # Ensure required columns exist
         if 'date' not in df.columns or 'geo' not in df.columns or 'value' not in df.columns:
             st.warning(f"Retail sales CSV '{filepath}' missing expected columns (date, geo, value). Found: {df.columns.tolist()}")
-            return pd.DataFrame             
+            return pd.DataFrame()
+            
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
         df.dropna(subset=['date'], inplace=True)
         
@@ -67,25 +68,14 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
     try:
         df = pd.read_csv(filepath)
         
-
         time_period_col = None
         obs_value_col = None
 
-
-        # --- NEW: Robustly identify TIME_PERIOD and OBS_VALUE ---
-        time_period_col = None
-        obs_value_col = None
-
-        # Look for TIME_PERIOD column (case-insensitive)
- aa499a8c660667cadc066d07ec0a9f6d50c30db2
         for col in df.columns:
             if 'TIME_PERIOD' in col.upper():
                 time_period_col = col
                 break
         
-
-        # Look for OBS_VALUE column (case-insensitive)
- aa499a8c660667cadc066d07ec0a9f6d50c30db2
         for col in df.columns:
             if 'OBS_VALUE' in col.upper():
                 obs_value_col = col
@@ -104,7 +94,6 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
             'GEO': 'geo' # Standardize GEO if present (Eurostat uses 'GEO')
         })
 
-
         # --- NEW: Standardize other common Eurostat dimension columns (case-insensitive) ---
         # Iterate through all columns and rename if they match expected dimension names
         for original_col in df_processed.columns.tolist():
@@ -118,7 +107,6 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
             elif original_col.upper() == 'INDIC_BT': df_processed = df_processed.rename(columns={original_col: 'indic_bt'}) # For retail data if it comes in long format
 
 
- aa499a8c660667cadc066d07ec0a9f6d50c30db2
         # Clean 'value' column
         df_processed['value'] = pd.to_numeric(
             df_processed['value'].astype(str).str.replace(r'[a-zA-Z\s:]', '', regex=True), 
