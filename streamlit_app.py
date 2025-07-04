@@ -467,4 +467,9 @@ with tab4: # Consumer Insights tab
     st.write("Explore broader economic and demographic trends influencing consumer behavior in Europe and the UK.")
 
     insight_type = st.selectbox(
+
         "Select Consumer Insight T
+
+        "Select Consumer Insight 
+ dd88c8e187925559def70aac619edf96437874bd
+ 
