@@ -31,11 +31,13 @@ def load_eurostat_retail_sales_specific(filepath):
     """
     Loads eurostat_retail_sales.csv which is assumed to be already flat with 'date', 'geo', 'value' columns.
     """
+    st.write(f"DEBUG: Loading retail sales specific: {filepath}") # Debug print
     if not os.path.exists(filepath):
         st.error(f"Error: Data file '{filepath}' not found. Please ensure it's in the same folder as the app.")
         return pd.DataFrame()
     try:
         df = pd.read_csv(filepath)
+        st.write(f"DEBUG: Retail sales raw columns: {df.columns.tolist()}") # Debug print
         
         # Standardize column names if they are slightly different
         if 'Date' in df.columns: df = df.rename(columns={'Date': 'date'})
@@ -62,21 +64,28 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
     """
     Loads and preprocesses Eurostat CSVs that are in 'long' format (have TIME_PERIOD and OBS_VALUE).
     """
+    st.write(f"DEBUG: Loading long format data: {filepath}") # Debug print
     if not os.path.exists(filepath):
         st.error(f"Error: Data file '{filepath}' not found. Please ensure it's in the same folder as the app.")
         return pd.DataFrame()
     try:
         df = pd.read_csv(filepath)
+        st.write(f"DEBUG: Long format raw columns for {filepath}: {df.columns.tolist()}") # Debug print
         
-        # --- NEW: Standardize all column names to lowercase for easier access ---
+        # --- NEW: Standardize all column names to lowercase immediately after loading ---
         df.columns = [col.lower().strip() for col in df.columns]
-
-        # --- NEW: Robustly identify TIME_PERIOD and OBS_VALUE (now that columns are lowercase) ---
+        st.write(f"DEBUG: Columns after lowercasing: {df.columns.tolist()}") # Debug print
+        
         time_period_col = None
         obs_value_col = None
 
-        if 'time_period' in df.columns: time_period_col = 'time_period'
-        if 'obs_value' in df.columns: obs_value_col = 'obs_value'
+        # Look for TIME_PERIOD column (now lowercase)
+        if 'time_period' in df.columns:
+            time_period_col = 'time_period'
+        
+        # Look for OBS_VALUE column (now lowercase)
+        if 'obs_value' in df.columns:
+            obs_value_col = 'obs_value'
 
         if not time_period_col or not obs_value_col:
             st.warning(f"Warning: Expected 'time_period' and 'obs_value' in '{filepath}'. Found: {df.columns.tolist()}")
@@ -110,11 +119,15 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
         df_processed['date'] = df_processed['date'].apply(parse_eurostat_date)
         df_processed.dropna(subset=['date'], inplace=True)
 
-        # Apply specific filters (e.g., cofog_l2='CP01', ind_type='I_IBSPS', age='TOTAL', sex='T')
+        # Apply specific filters (e.g., cofog_l2='cp01', ind_type='i_ibsps', age='total', sex='t')
         if specific_filters:
+            st.write(f"DEBUG: Applying filters for {filepath}: {specific_filters}") # Debug print
+            st.write(f"DEBUG: Columns before filtering: {df_processed.columns.tolist()}") # Debug print
             for col_filter_name, filter_value in specific_filters.items():
-                if col_filter_name.lower() in df_processed.columns: # Check lowercase column name
-                    df_processed = df_processed[df_processed[col_filter_name.lower()].astype(str).str.strip() == str(filter_value).strip()]
+                if col_filter_name in df_processed.columns: # Filter column name is already lowercase
+                    initial_rows = len(df_processed)
+                    df_processed = df_processed[df_processed[col_filter_name].astype(str).str.strip() == str(filter_value).strip()]
+                    st.write(f"DEBUG: Filtered by {col_filter_name}='{filter_value}'. Rows: {initial_rows} -> {len(df_processed)}") # Debug print
                 else:
                     st.warning(f"Filter column '{col_filter_name}' not found in DataFrame for filtering '{filepath}'. Available columns: {df_processed.columns.tolist()}")
             
@@ -122,7 +135,6 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
                 st.info(f"No data remaining in '{filepath}' after applying filters: {specific_filters}")
                 return pd.DataFrame()
 
-        # Final column selection
         required_final_cols = ['date', 'geo', 'value']
         if 'geo' not in df_processed.columns:
             st.warning(f"Final 'geo' column missing after processing {filepath}. Defaulting to 'Unknown'.")
@@ -451,8 +463,8 @@ with tab3:
 
 
 with tab4: # Consumer Insights tab
+    st.header("🧠 Consumer Insights & Macro Trends")
+    st.write("Explore broader economic and demographic trends influencing consumer behavior in Europe and the UK.")
 
-    st.header("🧠 Consumer Insights & Macro Trend
-
-    st.header("🧠 Consumer Insights & Macro Trend
- 30a867479cbc5aaf2356f9812dfa6ffc94e28be1
+    insight_type = st.selectbox(
+        "Select Consumer Insight T
