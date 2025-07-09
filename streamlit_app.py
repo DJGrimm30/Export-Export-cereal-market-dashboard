@@ -23,145 +23,157 @@ st.set_page_config(
 # --- Custom CSS for Redesigned UI ---
 st.markdown("""
 <style>
-    /* General Body and App Container */
+    /* Ensure the entire app background is consistent */
+    body {
+        background-color: #F0F2F5 !important;
+        color: #333333 !important;
+        font-family: 'Inter', sans-serif !important;
+    }
     .stApp {
-        background-color: #F0F2F5; /* Light grey background */
-        color: #333333; /* Dark text */
-        font-family: 'Inter', sans-serif; /* Modern font */
+        background-color: #F0F2F5 !important; /* Light grey background */
+        color: #333333 !important; /* Dark text */
+    }
+
+    /* Header styling */
+    h1, h2, h3, h4, h5, h6 {
+        color: #212529 !important;
+    }
+
+    /* Target Streamlit's main content block (where cards/elements are) */
+    /* This class often changes, so targeting data-testid is more stable */
+    div[data-testid="stVerticalBlock"] > div:first-child {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px; /* Space between cards */
+        padding: 20px; /* Padding inside the main content area */
+    }
+
+    /* Card Styling - applies to direct children of the main content block */
+    div[data-testid="stVerticalBlock"] > div:first-child > div > div:first-child {
+        background-color: #FFFFFF !important; /* White card background */
+        border-radius: 15px !important; /* More rounded corners */
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08) !important; /* Stronger shadow */
+        padding: 25px !important;
+        flex: 1 !important; /* Allow cards to grow */
+        min-width: 300px !important; /* Minimum width before wrapping */
+        border: none !important; /* Remove default border */
+        transition: transform 0.2s ease-in-out !important;
+        margin-bottom: 0 !important; /* Remove default block margin */
+    }
+    div[data-testid="stVerticalBlock"] > div:first-child > div > div:first-child:hover {
+        transform: translateY(-5px) !important; /* Slight lift on hover */
+    }
+
+    /* Specific Gradient Card (for overview metrics) */
+    .gradient-card {
+        background: linear-gradient(135deg, #FF6B6B, #FFD166) !important; /* Warm, vibrant gradient */
+        color: white !important;
+        padding: 25px !important;
+        border-radius: 15px !important;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15) !important;
+        min-width: 350px !important;
+    }
+    .gradient-card h3 {
+        color: white !important;
+        font-size: 2.5em !important;
+        margin-bottom: 5px !important;
+    }
+    .gradient-card p {
+        color: rgba(255, 255, 255, 0.8) !important;
+        font-size: 1.1em !important;
     }
 
     /* Sidebar Styling */
-    .st-emotion-cache-vk330y { /* Target sidebar container */
-        background-color: #2D3748; /* Dark blue-grey sidebar */
-        color: #F0F2F5; /* Light text for sidebar */
-        border-radius: 0 15px 15px 0; /* Rounded right corners */
-        box-shadow: 4px 0 10px rgba(0, 0, 0, 0.1); /* Shadow for depth */
-        padding-top: 30px;
+    section[data-testid="stSidebar"] {
+        background-color: #2D3748 !important; /* Dark blue-grey sidebar */
+        color: #F0F2F5 !important;
+        border-radius: 0 15px 15px 0 !important;
+        box-shadow: 4px 0 10px rgba(0, 0, 0, 0.1) !important;
+        padding-top: 30px !important;
     }
     .st-emotion-cache-1jm15vj { /* Sidebar header */
-        color: #F0F2F5;
-        font-weight: 600;
-        padding-left: 20px;
-        margin-bottom: 20px;
+        color: #F0F2F5 !important;
+        font-weight: 600 !important;
+        padding-left: 20px !important;
+        margin-bottom: 20px !important;
     }
     .st-emotion-cache-1w04006 label { /* Sidebar multiselect labels */
-        color: #F0F2F5;
+        color: #F0F2F5 !important;
     }
     .st-emotion-cache-1c7y2kl { /* Sidebar multiselect input */
-        background-color: #4A5568;
-        color: #F0F2F5;
-        border-radius: 8px;
-        border: 1px solid #667085;
+        background-color: #4A5568 !important;
+        color: #F0F2F5 !important;
+        border-radius: 8px !important;
+        border: 1px solid #667085 !important;
     }
     .st-emotion-cache-1c7y2kl:focus {
-        border-color: #63B3ED; /* Highlight on focus */
+        border-color: #63B3ED !important;
     }
     .st-emotion-cache-1c7y2kl div[data-baseweb="select"] > div { /* Multiselect selected items background */
         background-color: #63B3ED !important;
         color: white !important;
-        border-radius: 5px;
+        border-radius: 5px !important;
     }
     .st-emotion-cache-1c7y2kl div[data-baseweb="select"] > div:hover {
         background-color: #4299E1 !important;
     }
 
-    /* Main Content Area */
-    .st-emotion-cache-nahz7x { /* Target Streamlit's main block container */
-        background-color: #F0F2F5; /* Match app background */
-        padding: 20px 40px; /* More padding for main content */
+    /* Button styling */
+    .st-emotion-cache-7ym5gk { /* Primary button */
+        background-color: #007BFF !important; /* Blue button */
+        color: white !important;
+        border-radius: 8px !important;
+    }
+    .st-emotion-cache-7ym5gk:hover {
+        background-color: #0056b3 !important;
     }
 
-    /* Card Styling */
-    .st-emotion-cache-nahz7x > div:first-child > div:first-child { /* Target top-level block for cards */
-        display: flex;
-        flex-wrap: wrap;
-        gap: 20px; /* Space between cards */
-    }
-    .st-emotion-cache-nahz7x > div:first-child > div:first-child > div { /* Individual card containers */
-        background-color: #FFFFFF; /* White card background */
-        border-radius: 15px; /* More rounded corners */
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08); /* Stronger shadow */
-        padding: 25px;
-        flex: 1; /* Allow cards to grow */
-        min-width: 300px; /* Minimum width before wrapping */
-        border: none; /* Remove default border */
-        transition: transform 0.2s ease-in-out;
-    }
-    .st-emotion-cache-nahz7x > div:first-child > div:first-child > div:hover {
-        transform: translateY(-5px); /* Slight lift on hover */
-    }
-
-    /* Specific Gradient Card (for overview metrics) */
-    .gradient-card {
-        background: linear-gradient(135deg, #FF6B6B, #FFD166); /* Warm, vibrant gradient */
-        color: white;
-        padding: 25px;
-        border-radius: 15px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
-        min-width: 350px; /* Slightly wider for main metric */
-    }
-    .gradient-card h3 {
-        color: white;
-        font-size: 2.5em;
-        margin-bottom: 5px;
-    }
-    .gradient-card p {
-        color: rgba(255, 255, 255, 0.8);
-        font-size: 1.1em;
-    }
-
-    /* Chart Styling */
-    .stPlotlyChart {
-        border-radius: 10px;
-        overflow: hidden; /* Ensures chart respects border-radius */
-    }
-
-    /* Search Input */
+    /* Input fields */
     .st-emotion-cache-1c7y2kl input {
-        border-radius: 8px;
-        border: 1px solid #CBD5E0;
-        padding: 10px;
+        border-radius: 8px !important;
+        border: 1px solid #CED4DA !important;
+        padding: 10px !important;
     }
 
     /* Table/DataFrame Styling */
     .st-emotion-cache-1s05x0n { /* DataFrame container */
-        border-radius: 10px;
-        overflow: hidden;
-        border: 1px solid #E2E8F0;
+        border-radius: 10px !important;
+        overflow: hidden !important;
+        border: 1px solid #E2E8F0 !important;
     }
     .dataframe {
-        border-radius: 10px;
+        border-radius: 10px !important;
     }
 
     /* Tabs Styling */
-    .st-emotion-cache-10qj00f { /* Tabs container */
-        background-color: #F0F2F5; /* Match app background */
-        border-bottom: 1px solid #E2E8F0;
-        margin-bottom: 20px;
+    div[data-testid="stTabs"] { /* Tabs container */
+        background-color: #F0F2F5 !important; /* Match app background */
+        border-bottom: 1px solid #E2E8F0 !important;
+        margin-bottom: 20px !important;
     }
-    .st-emotion-cache-10qj00f button { /* Individual tabs */
-        border-radius: 10px 10px 0 0;
-        border: none;
-        background-color: #E2E8F0;
-        color: #4A5568;
-        margin-right: 8px;
-        padding: 12px 20px;
-        font-weight: 600;
-        transition: all 0.2s ease-in-out;
+    div[data-testid="stTabsButtons"] button { /* Individual tabs */
+        border-radius: 10px 10px 0 0 !important;
+        border: none !important;
+        background-color: #E2E8F0 !important;
+        color: #4A5568 !important;
+        margin-right: 8px !important;
+        padding: 12px 20px !important;
+        font-weight: 600 !important;
+        transition: all 0.2s ease-in-out !important;
     }
-    .st-emotion-cache-10qj00f button[aria-selected="true"] {
-        background-color: #FFFFFF;
-        color: #3182CE; /* Vibrant blue for active tab */
-        border-bottom: 3px solid #3182CE;
-        box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+    div[data-testid="stTabsButtons"] button[aria-selected="true"] {
+        background-color: #FFFFFF !important;
+        color: #3182CE !important; /* Vibrant blue for active tab */
+        border-bottom: 3px solid #3182CE !important;
+        box-shadow: 0 -2px 5px rgba(0,0,0,0.05) !important;
     }
-    .st-emotion-cache-10qj00f button:hover:not([aria-selected="true"]) {
-        background-color: #CFD8DC;
+    div[data-testid="stTabsButtons"] button:hover:not([aria-selected="true"]) {
+        background-color: #CFD8DC !important;
     }
 
     /* Info/Warning boxes */
     .stAlert {
-        border-radius: 10px;
+        border-radius: 10px !important;
     }
 </style>
 """, unsafe_allow_html=True)
