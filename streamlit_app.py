@@ -20,15 +20,161 @@ st.set_page_config(
     # Theme applied via .streamlit/config.toml
 )
 
-st.title("🥣 European Breakfast Product Market Dashboard")
-st.markdown("---") 
+# --- Custom CSS for Redesigned UI ---
+st.markdown("""
+<style>
+    /* General Body and App Container */
+    .stApp {
+        background-color: #F0F2F5; /* Light grey background */
+        color: #333333; /* Dark text */
+        font-family: 'Inter', sans-serif; /* Modern font */
+    }
+
+    /* Sidebar Styling */
+    .st-emotion-cache-vk330y { /* Target sidebar container */
+        background-color: #2D3748; /* Dark blue-grey sidebar */
+        color: #F0F2F5; /* Light text for sidebar */
+        border-radius: 0 15px 15px 0; /* Rounded right corners */
+        box-shadow: 4px 0 10px rgba(0, 0, 0, 0.1); /* Shadow for depth */
+        padding-top: 30px;
+    }
+    .st-emotion-cache-1jm15vj { /* Sidebar header */
+        color: #F0F2F5;
+        font-weight: 600;
+        padding-left: 20px;
+        margin-bottom: 20px;
+    }
+    .st-emotion-cache-1w04006 label { /* Sidebar multiselect labels */
+        color: #F0F2F5;
+    }
+    .st-emotion-cache-1c7y2kl { /* Sidebar multiselect input */
+        background-color: #4A5568;
+        color: #F0F2F5;
+        border-radius: 8px;
+        border: 1px solid #667085;
+    }
+    .st-emotion-cache-1c7y2kl:focus {
+        border-color: #63B3ED; /* Highlight on focus */
+    }
+    .st-emotion-cache-1c7y2kl div[data-baseweb="select"] > div { /* Multiselect selected items background */
+        background-color: #63B3ED !important;
+        color: white !important;
+        border-radius: 5px;
+    }
+    .st-emotion-cache-1c7y2kl div[data-baseweb="select"] > div:hover {
+        background-color: #4299E1 !important;
+    }
+
+    /* Main Content Area */
+    .st-emotion-cache-nahz7x { /* Target Streamlit's main block container */
+        background-color: #F0F2F5; /* Match app background */
+        padding: 20px 40px; /* More padding for main content */
+    }
+
+    /* Card Styling */
+    .st-emotion-cache-nahz7x > div:first-child > div:first-child { /* Target top-level block for cards */
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px; /* Space between cards */
+    }
+    .st-emotion-cache-nahz7x > div:first-child > div:first-child > div { /* Individual card containers */
+        background-color: #FFFFFF; /* White card background */
+        border-radius: 15px; /* More rounded corners */
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08); /* Stronger shadow */
+        padding: 25px;
+        flex: 1; /* Allow cards to grow */
+        min-width: 300px; /* Minimum width before wrapping */
+        border: none; /* Remove default border */
+        transition: transform 0.2s ease-in-out;
+    }
+    .st-emotion-cache-nahz7x > div:first-child > div:first-child > div:hover {
+        transform: translateY(-5px); /* Slight lift on hover */
+    }
+
+    /* Specific Gradient Card (for overview metrics) */
+    .gradient-card {
+        background: linear-gradient(135deg, #FF6B6B, #FFD166); /* Warm, vibrant gradient */
+        color: white;
+        padding: 25px;
+        border-radius: 15px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+        min-width: 350px; /* Slightly wider for main metric */
+    }
+    .gradient-card h3 {
+        color: white;
+        font-size: 2.5em;
+        margin-bottom: 5px;
+    }
+    .gradient-card p {
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 1.1em;
+    }
+
+    /* Chart Styling */
+    .stPlotlyChart {
+        border-radius: 10px;
+        overflow: hidden; /* Ensures chart respects border-radius */
+    }
+
+    /* Search Input */
+    .st-emotion-cache-1c7y2kl input {
+        border-radius: 8px;
+        border: 1px solid #CBD5E0;
+        padding: 10px;
+    }
+
+    /* Table/DataFrame Styling */
+    .st-emotion-cache-1s05x0n { /* DataFrame container */
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid #E2E8F0;
+    }
+    .dataframe {
+        border-radius: 10px;
+    }
+
+    /* Tabs Styling */
+    .st-emotion-cache-10qj00f { /* Tabs container */
+        background-color: #F0F2F5; /* Match app background */
+        border-bottom: 1px solid #E2E8F0;
+        margin-bottom: 20px;
+    }
+    .st-emotion-cache-10qj00f button { /* Individual tabs */
+        border-radius: 10px 10px 0 0;
+        border: none;
+        background-color: #E2E8F0;
+        color: #4A5568;
+        margin-right: 8px;
+        padding: 12px 20px;
+        font-weight: 600;
+        transition: all 0.2s ease-in-out;
+    }
+    .st-emotion-cache-10qj00f button[aria-selected="true"] {
+        background-color: #FFFFFF;
+        color: #3182CE; /* Vibrant blue for active tab */
+        border-bottom: 3px solid #3182CE;
+        box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+    }
+    .st-emotion-cache-10qj00f button:hover:not([aria-selected="true"]) {
+        background-color: #CFD8DC;
+    }
+
+    /* Info/Warning boxes */
+    .stAlert {
+        border-radius: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+st.title("📊 Analytics Dashboard") # Changed title to fit new theme
 
 # --- Data Loading Functions ---
-
 @st.cache_data
-def load_eurostat_retail_sales_specific(filepath):
+def load_eurostat_data(filepath, geo_col='geo', value_col='value', date_col='date', specific_filters=None):
     """
-    Loads eurostat_retail_sales.csv which is assumed to be already flat with 'date', 'geo', 'value' columns.
+    Generic function to load and preprocess Eurostat CSVs.
+    Handles different Eurostat download formats (complex header vs. already melted).
     """
     if not os.path.exists(filepath):
         st.error(f"Error: Data file '{filepath}' not found. Please ensure it's in the same folder as the app.")
@@ -36,113 +182,99 @@ def load_eurostat_retail_sales_specific(filepath):
     try:
         df = pd.read_csv(filepath)
         
-        # Standardize column names if they are slightly different
-        if 'Date' in df.columns: df = df.rename(columns={'Date': 'date'})
-        if 'Geo' in df.columns: df = df.rename(columns={'Geo': 'geo'})
-        if 'Value' in df.columns: df = df.rename(columns={'Value': 'value'})
+        # Identify actual time period columns (years, or year-quarter/month formats)
+        time_period_cols_to_melt = [col for col in df.columns if re.match(r'^\d{4}(Q[1-4]|M\d{2})?$', col.strip())]
         
-        # Ensure required columns exist
-        if 'date' not in df.columns or 'geo' not in df.columns or 'value' not in df.columns:
-            st.warning(f"Retail sales CSV '{filepath}' missing expected columns (date, geo, value). Found: {df.columns.tolist()}")
-            return pd.DataFrame()
+        value_col_in_raw_data = 'OBS_VALUE'
+        
+        if value_col_in_raw_data not in df.columns and not time_period_cols_to_melt:
+            df_processed = df.copy()
             
-        df['date'] = pd.to_datetime(df['date'], errors='coerce')
-        df.dropna(subset=['date'], inplace=True)
-        
-        return df[['date', 'geo', 'value']].copy()
-
-    except Exception as e:
-        st.error(f"Failed to load or parse Eurostat retail sales data from '{filepath}': {e}")
-        return pd.DataFrame()
-
-
-@st.cache_data
-def load_eurostat_long_format_data(filepath, specific_filters=None):
-    """
-    Loads and preprocesses Eurostat CSVs that are in 'long' format (have TIME_PERIOD and OBS_VALUE).
-    """
-    if not os.path.exists(filepath):
-        st.error(f"Error: Data file '{filepath}' not found. Please ensure it's in the same folder as the app.")
-        return pd.DataFrame()
-    try:
-        df = pd.read_csv(filepath)
-        
-        # Standardize all column names to lowercase immediately after loading
-        df.columns = [col.lower().strip() for col in df.columns]
-        
-        time_period_col = None
-        obs_value_col = None
-
-        if 'time_period' in df.columns: time_period_col = 'time_period'
-        if 'obs_value' in df.columns: obs_value_col = 'obs_value'
-
-        if not time_period_col or not obs_value_col:
-            st.warning(f"Warning: Expected 'time_period' and 'obs_value' in '{filepath}'. Found: {df.columns.tolist()}")
-            return pd.DataFrame()
-        
-        df_processed = df.copy()
-        
-        df_processed = df_processed.rename(columns={
-            time_period_col: 'date',
-            obs_value_col: 'value',
-            'geo': 'geo' # 'geo' should already be lowercase
-        })
-
-        # Standardize other common Eurostat dimension columns (case-insensitive)
-        for original_col in df_processed.columns.tolist():
-            if original_col.upper() == 'UNIT': df_processed = df_processed.rename(columns={original_col: 'unit'})
-            elif original_col.upper() == 'FREQ': df_processed = df_processed.rename(columns={original_col: 'freq'})
-            elif original_col.upper() == 'COFOG_L2': df_processed = df_processed.rename(columns={original_col: 'cofog_l2'})
-            elif original_col.upper() == 'IND_TYPE': df_processed = df_processed.rename(columns={original_col: 'ind_type'})
-            elif original_col.upper() == 'AGE': df_processed = df_processed.rename(columns={original_col: 'age'})
-            elif original_col.upper() == 'SEX': df_processed = df_processed.rename(columns={original_col: 'sex'})
-            elif original_col.upper() == 'NACE_R2': df_processed = df_processed.rename(columns={original_col: 'nace_r2'}) 
-            elif original_col.upper() == 'INDIC_BT': df_processed = df_processed.rename(columns={original_col: 'indic_bt'}) 
-
-
-        df_processed['value'] = pd.to_numeric(
-            df_processed['value'].astype(str).str.replace(r'[a-zA-Z\s:]', '', regex=True), 
-            errors='coerce'
-        )
-        df_processed.dropna(subset=['value'], inplace=True)
-
-        def parse_eurostat_date(date_str):
-            if pd.isna(date_str): return pd.NaT
-            date_str = str(date_str).strip()
-            if re.match(r'^\d{4}$', date_str): return pd.to_datetime(date_str, format='%Y')
-            elif re.match(r'^\d{4}Q[1-4]$', date_str): return pd.to_datetime(f'{date_str[:4]}-{int(date_str[5])*3-2}-01')
-            elif re.match(r'^\d{4}M\d{2}$', date_str): return pd.to_datetime(date_str, format='%YM%m')
-            return pd.NaT
-
-        df_processed['date'] = df_processed['date'].apply(parse_eurostat_date)
-        df_processed.dropna(subset=['date'], inplace=True)
-
-        if specific_filters:
-            for col_filter_name, filter_value in specific_filters.items():
-                found_filter_col = None
-                for col in df_processed.columns:
-                    if col_filter_name.lower() == col.lower(): # Match case-insensitively
-                        found_filter_col = col
-                        break
-
-                if found_filter_col:
-                    df_processed = df_processed[df_processed[found_filter_col].astype(str).str.strip() == str(filter_value).strip()]
-                else:
-                    st.warning(f"Filter column '{col_filter_name}' not found in DataFrame for filtering '{filepath}'. Available columns: {df_processed.columns.tolist()}")
+            if 'Date' in df_processed.columns: df_processed = df_processed.rename(columns={'Date': 'date'})
+            if 'Geo' in df_processed.columns: df_processed = df_processed.rename(columns={'Geo': 'geo'})
+            if 'Value' in df_processed.columns: df_processed = df_processed.rename(columns={'Value': 'value'})
             
-            if df_processed.empty:
-                st.info(f"No data remaining in '{filepath}' after applying filters: {specific_filters}")
+            if date_col not in df_processed.columns or geo_col not in df_processed.columns or value_col not in df_processed.columns:
+                st.warning(f"Flat CSV '{filepath}' missing expected columns (date, geo, value). Found: {df_processed.columns.tolist()}")
                 return pd.DataFrame()
+                
+            df_processed['date'] = pd.to_datetime(df_processed['date'], errors='coerce')
+            df_processed.dropna(subset=['date'], inplace=True)
+            
+            if specific_filters:
+                for col_filter_name, filter_value in specific_filters.items():
+                    if col_filter_name in df_processed.columns:
+                        df_processed = df_processed[df_processed[col_filter_name].astype(str).str.strip() == str(filter_value).strip()]
+            
+            return df_processed[[date_col, geo_col, value_col]].copy()
+        
+        else: # Process complex Eurostat downloads with OBS_VALUE/TIME_PERIOD
+            df.columns = [col.lower().strip() for col in df.columns]
+            
+            time_period_col = 'time_period' if 'time_period' in df.columns else None
+            obs_value_col = 'obs_value' if 'obs_value' in df.columns else None
 
-        required_final_cols = ['date', 'geo', 'value']
-        if 'geo' not in df_processed.columns:
-            st.warning(f"Final 'geo' column missing after processing {filepath}. Defaulting to 'Unknown'.")
-            df_processed['geo'] = 'Unknown' 
-        if 'value' not in df_processed.columns:
-            st.warning(f"Final 'value' column missing after processing {filepath}. Defaulting to 0.")
-            df_processed['value'] = 0 
+            if not time_period_col or not obs_value_col:
+                st.warning(f"Warning: Expected 'time_period' and 'obs_value' in '{filepath}'. Found: {df.columns.tolist()}")
+                return pd.DataFrame()
+            
+            df_processed = df.copy()
+            
+            df_processed = df_processed.rename(columns={
+                time_period_col: 'date',
+                obs_value_col: 'value',
+                'geo': 'geo'
+            })
 
-        return df_processed[required_final_cols].copy()
+            for original_col in df_processed.columns.tolist():
+                if original_col.upper() == 'UNIT': df_processed = df_processed.rename(columns={original_col: 'unit'})
+                elif original_col.upper() == 'FREQ': df_processed = df_processed.rename(columns={original_col: 'freq'})
+                elif original_col.upper() == 'COFOG_L2': df_processed = df_processed.rename(columns={original_col: 'cofog_l2'})
+                elif original_col.upper() == 'IND_TYPE': df_processed = df_processed.rename(columns={original_col: 'ind_type'})
+                elif original_col.upper() == 'AGE': df_processed = df_processed.rename(columns={original_col: 'age'})
+                elif original_col.upper() == 'SEX': df_processed = df_processed.rename(columns={original_col: 'sex'})
+                elif original_col.upper() == 'NACE_R2': df_processed = df_processed.rename(columns={original_col: 'nace_r2'}) 
+                elif original_col.upper() == 'INDIC_BT': df_processed = df_processed.rename(columns={original_col: 'indic_bt'}) 
+
+            df_processed['value'] = pd.to_numeric(
+                df_processed['value'].astype(str).str.replace(r'[a-zA-Z\s:]', '', regex=True), 
+                errors='coerce'
+            )
+            df_processed.dropna(subset=['value'], inplace=True)
+
+            def parse_eurostat_date(date_str):
+                if pd.isna(date_str): return pd.NaT
+                date_str = str(date_str).strip()
+                if re.match(r'^\d{4}$', date_str): return pd.to_datetime(date_str, format='%Y')
+                elif re.match(r'^\d{4}Q[1-4]$', date_str): return pd.to_datetime(f'{date_str[:4]}-{int(date_str[5])*3-2}-01')
+                elif re.match(r'^\d{4}M\d{2}$', date_str): return pd.to_datetime(date_str, format='%YM%m')
+                return pd.NaT
+
+            df_processed['date'] = df_processed['date'].apply(parse_eurostat_date)
+            df_processed.dropna(subset=['date'], inplace=True)
+
+            if specific_filters:
+                for col_filter_name, filter_value in specific_filters.items():
+                    found_filter_col = None
+                    for col in df_processed.columns:
+                        if col_filter_name.lower() == col.lower():
+                            found_filter_col = col
+                            break
+
+                    if found_filter_col:
+                        df_processed = df_processed[df_processed[found_filter_col].astype(str).str.strip() == str(filter_value).strip()]
+                    else:
+                        st.warning(f"Filter column '{col_filter_name}' not found in DataFrame for filtering '{filepath}'. Available columns: {df_processed.columns.tolist()}")
+                
+                if df_processed.empty:
+                    st.info(f"No data remaining in '{filepath}' after applying filters: {specific_filters}")
+                    return pd.DataFrame()
+
+            required_final_cols = ['date', 'geo', 'value']
+            if 'geo' not in df_processed.columns: st.warning(f"Final 'geo' column missing after processing {filepath}. Defaulting to 'Unknown'."); df_processed['geo'] = 'Unknown' 
+            if 'value' not in df_processed.columns: st.warning(f"Final 'value' column missing after processing {filepath}. Defaulting to 0."); df_processed['value'] = 0 
+
+            return df_processed[required_final_cols].copy()
 
     except Exception as e:
         st.error(f"Failed to load or parse Eurostat data from '{filepath}': {e}")
