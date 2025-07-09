@@ -25,19 +25,16 @@ st.markdown("---")
 
 # --- Data Loading Functions ---
 
-# --- Specific loader for eurostat_retail_sales.csv (assumed to be flat) ---
 @st.cache_data
 def load_eurostat_retail_sales_specific(filepath):
     """
     Loads eurostat_retail_sales.csv which is assumed to be already flat with 'date', 'geo', 'value' columns.
     """
-    st.write(f"DEBUG: Loading retail sales specific: {filepath}") # Debug print
     if not os.path.exists(filepath):
         st.error(f"Error: Data file '{filepath}' not found. Please ensure it's in the same folder as the app.")
         return pd.DataFrame()
     try:
         df = pd.read_csv(filepath)
-        st.write(f"DEBUG: Retail sales raw columns: {df.columns.tolist()}") # Debug print
         
         # Standardize column names if they are slightly different
         if 'Date' in df.columns: df = df.rename(columns={'Date': 'date'})
@@ -64,28 +61,20 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
     """
     Loads and preprocesses Eurostat CSVs that are in 'long' format (have TIME_PERIOD and OBS_VALUE).
     """
-    st.write(f"DEBUG: Loading long format data: {filepath}") # Debug print
     if not os.path.exists(filepath):
         st.error(f"Error: Data file '{filepath}' not found. Please ensure it's in the same folder as the app.")
         return pd.DataFrame()
     try:
         df = pd.read_csv(filepath)
-        st.write(f"DEBUG: Long format raw columns for {filepath}: {df.columns.tolist()}") # Debug print
         
-        # --- NEW: Standardize all column names to lowercase immediately after loading ---
+        # Standardize all column names to lowercase immediately after loading
         df.columns = [col.lower().strip() for col in df.columns]
-        st.write(f"DEBUG: Columns after lowercasing: {df.columns.tolist()}") # Debug print
         
         time_period_col = None
         obs_value_col = None
 
-        # Look for TIME_PERIOD column (now lowercase)
-        if 'time_period' in df.columns:
-            time_period_col = 'time_period'
-        
-        # Look for OBS_VALUE column (now lowercase)
-        if 'obs_value' in df.columns:
-            obs_value_col = 'obs_value'
+        if 'time_period' in df.columns: time_period_col = 'time_period'
+        if 'obs_value' in df.columns: obs_value_col = 'obs_value'
 
         if not time_period_col or not obs_value_col:
             st.warning(f"Warning: Expected 'time_period' and 'obs_value' in '{filepath}'. Found: {df.columns.tolist()}")
@@ -93,21 +82,30 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
         
         df_processed = df.copy()
         
-        # Rename columns to standard names
         df_processed = df_processed.rename(columns={
             time_period_col: 'date',
             obs_value_col: 'value',
             'geo': 'geo' # 'geo' should already be lowercase
         })
 
-        # Clean 'value' column
+        # Standardize other common Eurostat dimension columns (case-insensitive)
+        for original_col in df_processed.columns.tolist():
+            if original_col.upper() == 'UNIT': df_processed = df_processed.rename(columns={original_col: 'unit'})
+            elif original_col.upper() == 'FREQ': df_processed = df_processed.rename(columns={original_col: 'freq'})
+            elif original_col.upper() == 'COFOG_L2': df_processed = df_processed.rename(columns={original_col: 'cofog_l2'})
+            elif original_col.upper() == 'IND_TYPE': df_processed = df_processed.rename(columns={original_col: 'ind_type'})
+            elif original_col.upper() == 'AGE': df_processed = df_processed.rename(columns={original_col: 'age'})
+            elif original_col.upper() == 'SEX': df_processed = df_processed.rename(columns={original_col: 'sex'})
+            elif original_col.upper() == 'NACE_R2': df_processed = df_processed.rename(columns={original_col: 'nace_r2'}) 
+            elif original_col.upper() == 'INDIC_BT': df_processed = df_processed.rename(columns={original_col: 'indic_bt'}) 
+
+
         df_processed['value'] = pd.to_numeric(
             df_processed['value'].astype(str).str.replace(r'[a-zA-Z\s:]', '', regex=True), 
             errors='coerce'
         )
         df_processed.dropna(subset=['value'], inplace=True)
 
-        # Convert 'date' to datetime objects, handling different formats
         def parse_eurostat_date(date_str):
             if pd.isna(date_str): return pd.NaT
             date_str = str(date_str).strip()
@@ -119,15 +117,16 @@ def load_eurostat_long_format_data(filepath, specific_filters=None):
         df_processed['date'] = df_processed['date'].apply(parse_eurostat_date)
         df_processed.dropna(subset=['date'], inplace=True)
 
-        # Apply specific filters (e.g., cofog_l2='cp01', ind_type='i_ibsps', age='total', sex='t')
         if specific_filters:
-            st.write(f"DEBUG: Applying filters for {filepath}: {specific_filters}") # Debug print
-            st.write(f"DEBUG: Columns before filtering: {df_processed.columns.tolist()}") # Debug print
             for col_filter_name, filter_value in specific_filters.items():
-                if col_filter_name in df_processed.columns: # Filter column name is already lowercase
-                    initial_rows = len(df_processed)
-                    df_processed = df_processed[df_processed[col_filter_name].astype(str).str.strip() == str(filter_value).strip()]
-                    st.write(f"DEBUG: Filtered by {col_filter_name}='{filter_value}'. Rows: {initial_rows} -> {len(df_processed)}") # Debug print
+                found_filter_col = None
+                for col in df_processed.columns:
+                    if col_filter_name.lower() == col.lower(): # Match case-insensitively
+                        found_filter_col = col
+                        break
+
+                if found_filter_col:
+                    df_processed = df_processed[df_processed[found_filter_col].astype(str).str.strip() == str(filter_value).strip()]
                 else:
                     st.warning(f"Filter column '{col_filter_name}' not found in DataFrame for filtering '{filepath}'. Available columns: {df_processed.columns.tolist()}")
             
@@ -228,248 +227,4 @@ def calculate_yoy_growth(df, value_col='value', date_col='date', geo_col='geo'):
     
     return df_sorted.dropna(subset=['YoY_Growth'])
 
-def calculate_per_capita(value_df, population_df, value_col='value', pop_col='value', date_col='date', geo_col='geo'):
-    """
-    Calculates per capita figures by merging value data with population data.
-    Assumes both dataframes have 'date', 'geo', and 'value' columns.
-    Population values should be in the same units (e.g., thousands, millions) as consumption values for meaningful per capita.
-    """
-    if value_df.empty or population_df.empty:
-        return pd.DataFrame()
-
-    value_df['year'] = value_df[date_col].dt.year
-    population_df['year'] = population_df[date_col].dt.year
-
-    merged_df = pd.merge(
-        value_df,
-        population_df[[geo_col, 'year', pop_col]].rename(columns={pop_col: 'population'}),
-        on=[geo_col, 'year'],
-        how='left'
-    )
-    
-    merged_df['Per_Capita_Value'] = merged_df[value_col] / merged_df['population']
-    
-    return merged_df.dropna(subset=['Per_Capita_Value'])
-
-# --- Load Data at App Start ---
-df_openfoodfacts = load_openfoodfacts_data()
-# --- UPDATED: Use specific loader for retail sales, generic for others ---
-df_eurostat_retail = load_eurostat_retail_sales_specific(EUROSTAT_RETAIL_CSV) # Removed specific_filters from call
-df_eurostat_consumption = load_eurostat_long_format_data(EUROSTAT_CONSUMPTION_CSV, specific_filters={'COFOG_L2': 'CP01', 'UNIT': 'PC_CP'})
-df_eurostat_ecommerce = load_eurostat_long_format_data(EUROSTAT_ECOMMERCE_CSV, specific_filters={'IND_TYPE': 'I_IBSPS', 'UNIT': 'PC_IND'})
-df_eurostat_population = load_eurostat_long_format_data(EUROSTAT_POPULATION_CSV, specific_filters={'AGE': 'TOTAL', 'SEX': 'T'})
-df_ons_retail_sales = load_ons_retail_sales_data()
-
-# --- Sidebar Filters ---
-st.sidebar.header("Global Filters")
-
-all_countries_off = sorted(df_openfoodfacts['Country'].dropna().unique().tolist()) if not df_openfoodfacts.empty else []
-selected_countries_off = st.sidebar.multiselect(
-    "Select Countries for Product Data",
-    options=all_countries_off,
-    default=all_countries_off
-)
-
-all_search_terms = sorted(df_openfoodfacts['Search_Term'].dropna().unique().tolist()) if not df_openfoodfacts.empty else []
-selected_search_terms = st.sidebar.multiselect(
-    "Select Breakfast Product Types",
-    options=all_search_terms,
-    default=all_search_terms
-)
-
-filtered_df_off = df_openfoodfacts[
-    (df_openfoodfacts['Country'].isin(selected_countries_off)) &
-    (df_openfoodfacts['Search_Term'].isin(selected_search_terms))
-] if not df_openfoodfacts.empty else pd.DataFrame()
-
-
-# --- Main Content Tabs ---
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview & Product List", "📈 Sales Trends (Eurostat)", "📦 Product Breakdown & Search", "🧠 Consumer Insights & Macro Trends"])
-
-with tab1:
-    st.header("Overview & Filtered Product List")
-    st.write("Explore a comprehensive list of breakfast products based on your selections.")
-
-    search_query = st.text_input("Search Product Name or Brand", "").strip().lower()
-    
-    display_df = filtered_df_off.copy()
-    if search_query:
-        display_df = display_df[
-            display_df['Product'].astype(str).str.lower().str.contains(search_query) |
-            display_df['Brand'].astype(str).str.lower().str.contains(search_query)
-        ]
-
-    st.subheader(f"Filtered Products ({len(display_df)} items)")
-    if not display_df.empty:
-        st.dataframe(display_df[['Product', 'Brand', 'Quantity', 'Store', 'Country', 'Search_Term', 'URL']], use_container_width=True)
-    else:
-        st.info("No products found matching the selected filters and search query.")
-
-    if not display_df.empty:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("Product Count by Country")
-            country_count_filtered = display_df['Country'].value_counts().reset_index()
-            country_count_filtered.columns = ['Country', 'Count']
-            fig_country_filtered = px.bar(
-                country_count_filtered, 
-                x='Country', 
-                y='Count', 
-                title='Number of Products Listed by Country (Filtered)'
-            )
-            st.plotly_chart(fig_country_filtered, use_container_width=True)
-        with col2:
-            st.subheader("Top Brands (Filtered)")
-            brand_count_filtered = display_df['Brand'].value_counts().reset_index() 
-            brand_count_filtered.columns = ['Brand', 'Count']
-            brand_count_filtered['Percentage'] = (brand_count_filtered['Count'] / brand_count_filtered['Count'].sum()) * 100
-
-            fig_brand_filtered = px.pie( 
-                brand_count_filtered.head(10), 
-                values='Count', 
-                names='Brand', 
-                title='Top 10 Brands Distribution (Filtered)',
-                hover_data=['Percentage'],
-                labels={'Percentage': '%'}
-            )
-            fig_brand_filtered.update_traces(textinfo='percent+label')
-            st.plotly_chart(fig_brand_filtered, use_container_width=True)
-
-        st.download_button(
-            "Download Filtered Data CSV",
-            data=display_df.to_csv(index=False).encode('utf-8'),
-            file_name="filtered_breakfast_products.csv",
-            mime="text/csv",
-        )
-
-
-with tab2:
-    st.header("Eurostat Retail Sales Trends")
-    st.write("Visualize overall retail trade index for food products in European countries.")
-
-    if not df_eurostat_retail.empty:
-        all_eurostat_retail_countries = sorted(df_eurostat_retail['geo'].dropna().unique().tolist())
-        
-        if 'UK' in all_eurostat_retail_countries:
-            all_eurostat_retail_countries.insert(0, all_eurostat_retail_countries.pop(all_eurostat_retail_countries.index('UK')))
-        
-        selected_eurostat_country = st.selectbox(
-            "Select Country for Sales Trend (Eurostat Retail)", 
-            options=all_eurostat_retail_countries,
-            key="eurostat_retail_country_select" 
-        )
-        
-        filtered_eurostat_retail_data = df_eurostat_retail[df_eurostat_retail['geo'] == selected_eurostat_country].copy()
-        
-        if not filtered_eurostat_retail_data.empty:
-            retail_yoy_growth = calculate_yoy_growth(filtered_eurostat_retail_data, geo_col='geo')
-            
-            if not retail_yoy_growth.empty:
-                st.subheader(f"Retail Sales Index YoY Growth in {selected_eurostat_country}")
-                fig_retail_yoy = px.line(
-                    retail_yoy_growth,
-                    x="date",
-                    y="YoY_Growth",
-                    title=f"Retail Sales Index YoY Growth in {selected_eurostat_country}",
-                    labels={"YoY_Growth": "YoY Growth (%)", "date": "Date"},
-                    hover_data={"YoY_Growth": ":.2f%"},
-                    markers=True
-                )
-                st.plotly_chart(fig_retail_yoy, use_container_width=True)
-            else:
-                st.info(f"Not enough data to calculate YoY growth for Retail Sales in {selected_eurostat_country}.")
-
-            st.subheader(f"Retail Sales Index in {selected_eurostat_country} (Eurostat)")
-            fig_sales = px.line(
-                filtered_eurostat_retail_data, 
-                x="date", 
-                y="value", 
-                title=f"Retail Sales Index in {selected_eurostat_country} (Eurostat)", 
-                labels={"value": "Retail Trade Index (Volume)", "date": "Date"},
-                hover_data={"value": ":.2f"},
-                markers=True
-            )
-            st.plotly_chart(fig_sales, use_container_width=True)
-        else:
-            st.info(f"No Eurostat retail sales data found in the loaded CSV for {selected_eurostat_country}.")
-    else:
-        st.info("Eurostat retail sales data not available.")
-
-with tab3:
-    st.header("Detailed Product Breakdown & Analysis")
-    st.write("Deep dive into product distribution by type, store, and brand based on your global filters.")
-
-    if not filtered_df_off.empty:
-        col3, col4 = st.columns(2)
-
-        with col3:
-            st.subheader("Products by Breakfast Type (Distribution)")
-            search_term_count_filtered = filtered_df_off['Search_Term'].value_counts().reset_index()
-            search_term_count_filtered.columns = ['Breakfast Type', 'Count']
-            
-            search_term_count_filtered['Percentage'] = (search_term_count_filtered['Count'] / search_term_count_filtered['Count'].sum()) * 100
-
-            fig_search_term = px.pie(
-                search_term_count_filtered, 
-                values='Count', 
-                names='Breakfast Type', 
-                title='Distribution of Products by Breakfast Type',
-                hover_data=['Percentage'], 
-                labels={'Percentage': '%'}
-            )
-            fig_search_term.update_traces(textinfo='percent+label')
-            st.plotly_chart(fig_search_term, use_container_width=True)
-
-        with col4:
-            st.subheader("Products by Store (Distribution)")
-            filtered_df_off['Store_List'] = filtered_df_off['Store'].astype(str).apply(lambda x: [s.strip() for s in x.split(',') if s.strip()])
-            exploded_stores = filtered_df_off.explode('Store_List')
-            
-            store_count = exploded_stores['Store_List'].value_counts().reset_index()
-            store_count.columns = ['Store', 'Count']
-            store_count = store_count[~store_count['Store'].isin(['N/A', ''])] 
-            
-            if not store_count.empty:
-                store_count['Percentage'] = (store_count['Count'] / store_count['Count'].sum()) * 100
-                fig_store = px.pie( 
-                    store_count.head(15), 
-                    values='Count', 
-                    names='Store', 
-                    title='Top 15 Stores by Product Listings Distribution',
-                    hover_data=['Percentage'],
-                    labels={'Percentage': '%'}
-                )
-                fig_store.update_traces(textinfo='percent+label')
-                st.plotly_chart(fig_store, use_container_width=True)
-            else:
-                st.info("No meaningful store data found in Open Food Facts for selected filters.")
-        
-        st.subheader("Explore Brands and Products")
-        available_brands = sorted(filtered_df_off['Brand'].dropna().unique().tolist())
-        selected_brands = st.multiselect(
-            "Select Brands to view products", 
-            options=available_brands,
-            key="brand_select_tab3"
-        )
-
-        if selected_brands:
-            filtered_by_brands = filtered_df_off[filtered_by_brands['Brand'].isin(selected_brands)]
-            st.dataframe(filtered_by_brands[['Product', 'Brand', 'Quantity', 'Store', 'Country', 'Search_Term', 'URL']], use_container_width=True)
-        else:
-            st.info("Select one or more brands to view their products.")
-
-    else:
-        st.info("No product data available for analysis. Adjust filters or check data source.")
-
-
-with tab4: # Consumer Insights tab
-    st.header("🧠 Consumer Insights & Macro Trends")
-    st.write("Explore broader economic and demographic trends influencing consumer behavior in Europe and the UK.")
-
-    insight_type = st.selectbox(
-
-        "Select Consumer Insight T
-
-        "Select Consumer Insight 
- dd88c8e187925559def70aac619edf96437874bd
- 
+def calculate_per_capita(value_df, population
