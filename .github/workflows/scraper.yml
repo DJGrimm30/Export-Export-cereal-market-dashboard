@@ -8,7 +8,6 @@ on:
 jobs:
   scrape_data:
     runs-on: ubuntu-latest
-    # --- NEW: Grant explicit write permissions for contents ---
     permissions:
       contents: write # This grants write access to the repository content
 
@@ -27,24 +26,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Change to working directory and run scraper
+      - name: Change to working directory and run Open Food Facts scraper
         run: |
-          cd ${{ github.workspace }} # Change current directory to the repo root
-          python openfoodfacts_scraper.py # Run the script from the new current directory
+          cd ${{ github.workspace }}
+          python openfoodfacts_scraper.py
 
-      - name: Commit and push updated CSV
+      - name: Commit and push updated CSVs
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # Add the NEW generated CSV file
-          git add openfoodfacts_breakfast_products.csv # <--- CHANGED FROM openfoodfacts_cereals.csv
+          # --- NEW: Tell Git to assume streamlit_app.py is unchanged for this commit ---
+          # This prevents conflicts with local changes to streamlit_app.py
+          git update-index --assume-unchanged streamlit_app.py
           
-          # Commit only if there are changes
-          git diff --quiet --exit-code || git commit -m 'Automated data update from Open Food Facts [skip ci]'
+          # Add the Open Food Facts generated CSV file
+          git add openfoodfacts_breakfast_products.csv
+          
+          # Commit only if there are changes (excluding streamlit_app.py)
+          git diff --quiet --exit-code || git commit -m 'Automated Open Food Facts data update [skip ci]'
           
           # Push changes
           git push
-        working-directory: ${{ github.workspace }} # Ensure git commands run from repo root
+        working-directory: ${{ github.workspace }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
